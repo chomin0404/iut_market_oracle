@@ -1,0 +1,14 @@
+{
+  "path": ".claude/audit/config-changes.jsonl",
+  "rotation": "size-based",
+  "max_bytes": 1000000,
+  "archive_count": 10,
+  "compression": "gzip",
+  "retention_rule": "keep latest active log plus 10 archives",
+  "scope": [
+    ".claude/settings.json",
+    "CLAUDE.md",
+    "pyproject.toml",
+    ".github/workflows/*"
+  ]
+}

@@ -1,0 +1,18 @@
+# Entropy Layer (T1000) — alert thresholds and rolling-window settings.
+#
+# kl_threshold:
+#   KL divergence KL(posterior || prior) above this value triggers a
+#   KL_THRESHOLD alert.  A value of 0.5 nats corresponds roughly to a
+#   posterior mean shift of one prior standard deviation.
+#
+# entropy_gradient_threshold:
+#   Absolute rolling entropy rate |ΔH| above this value triggers an
+#   ENTROPY_GRADIENT alert.  Units: nats per observation step.
+#
+# rolling_window:
+#   Number of consecutive ΔH values used to compute the rolling mean
+#   entropy rate.  Must be >= 1.
+
+kl_threshold: 0.5
+entropy_gradient_threshold: 0.1
+rolling_window: 5

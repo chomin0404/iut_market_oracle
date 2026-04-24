@@ -1,0 +1,72 @@
+# Prior distribution specifications for Bayesian update engine
+# Each entry maps to a PriorSpec schema (src/schemas.py)
+#
+# Supported distributions:
+#   beta   — params: alpha, beta   (for proportions: default rate, market share, ...)
+#   normal — params: mu, sigma     (for continuous values: growth rate, return, ...)
+
+bayesian_priors:
+
+  # --- Valuation / growth ---
+
+  revenue_growth:
+    distribution: normal
+    params:
+      mu: 0.05       # 5% prior mean annual growth
+      sigma: 0.02    # ±2% prior uncertainty (1-sigma)
+    description: "Annual revenue growth rate — conservative baseline"
+
+  ebit_margin:
+    distribution: normal
+    params:
+      mu: 0.12       # 12% prior EBIT margin
+      sigma: 0.04
+    description: "EBIT margin prior for mature industrial firm"
+
+  # --- Credit / default ---
+
+  default_probability:
+    distribution: beta
+    params:
+      alpha: 2.0
+      beta: 18.0     # prior mean = 2/(2+18) = 0.10
+    description: "1-year default probability prior (IG-grade firm)"
+
+  recovery_rate:
+    distribution: beta
+    params:
+      alpha: 6.0
+      beta: 4.0      # prior mean = 0.60
+    description: "Recovery rate in default scenario"
+
+  # --- Market share / concentration ---
+
+  market_share:
+    distribution: beta
+    params:
+      alpha: 5.0
+      beta: 95.0     # prior mean = 0.05
+    description: "Domestic market share prior for mid-cap firm"
+
+  hhi_normalized:
+    distribution: beta
+    params:
+      alpha: 3.0
+      beta: 7.0      # prior mean = 0.30 (moderate concentration)
+    description: "Normalized Herfindahl-Hirschman Index prior"
+
+  # --- Skill / dependency graph ---
+
+  edge_strength:
+    distribution: beta
+    params:
+      alpha: 2.0
+      beta: 2.0      # prior mean = 0.50, symmetric uncertainty
+    description: "Dependency edge strength prior (uninformative)"
+
+  basis_diversity:
+    distribution: beta
+    params:
+      alpha: 4.0
+      beta: 4.0      # prior mean = 0.50
+    description: "Portfolio basis diversity index prior"

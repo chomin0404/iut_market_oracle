@@ -1,0 +1,20 @@
+# Digital Twin Engine — default simulation parameters (T800)
+# All rates are annual decimals unless noted.
+
+simulation:
+  state_dim: 3
+  horizon: 20          # forward steps (quarterly cadence → 5 years)
+  n_samples: 500       # Monte Carlo sample count
+  dt: 0.25             # time step in years (0.25 = one quarter)
+  process_noise_std: 0.02  # σ of isotropic process noise; Q = σ²·I_d
+  random_seed: 42
+
+# Labels must align with state_dim = 3
+state_labels:
+  - log_revenue      # x[0]: log of revenue (JPY millions)
+  - growth_rate      # x[1]: annual growth rate (decimal)
+  - log_volatility   # x[2]: log of annual volatility (decimal)
+
+calibration:
+  obs_precision: 25.0   # τ_obs = 1/σ_obs² (σ_obs ≈ 0.20 = 20% observation noise)
+  prior_key: revenue_growth  # key into configs/priors.yaml

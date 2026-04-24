@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+
+# uv
+.python-version
+
+# Local Claude settings (personal overrides — not shared)
+.claude/settings.local.json
+# Transient hook state (regenerated on each session)
+.claude/state/
+# Audit logs (generated at runtime)
+.claude/audit/config-changes*.jsonl*
+
+# App artifacts (SQLite DB, runtime outputs)
+artifacts/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Type checker / linter caches
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# Test caches
+.pytest_cache/
+
+# Local working outputs
+output/
+
+# OS
+.DS_Store
+Thumbs.db

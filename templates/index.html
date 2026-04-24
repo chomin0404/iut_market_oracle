@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}IUT Market Oracle — 分析{% endblock %}
+
+{% block content %}
+<h1>IUT Market Oracle</h1>
+<h2>Inter-Universal Teichmüller 理論に基づく市場歪み検知</h2>
+
+<div class="form-card">
+  <form method="post" action="/analyze">
+    <label for="tickers">ティッカーシンボル</label>
+    <textarea id="tickers" name="tickers" rows="3"
+      placeholder="AAPL MSFT TSLA  または  AAPL, MSFT, TSLA"></textarea>
+    <p class="hint">スペース区切りまたはカンマ区切り。複数銘柄可。</p>
+    <button type="submit">分析を実行</button>
+  </form>
+</div>
+
+{% if recent %}
+<h3>最近の分析</h3>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>ティッカー</th>
+      <th>通過銘柄数</th>
+      <th>ステータス</th>
+      <th>実行日時</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in recent %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.tickers }}</td>
+      <td>{{ r.result_count }}</td>
+      <td>
+        {% if r.status == "completed" %}
+          <span class="badge badge-stable">DONE</span>
+        {% elif r.status in ["pending", "running"] %}
+          <span class="badge badge-running">{{ r.status | upper }}</span>
+        {% else %}
+          <span class="badge badge-evade">FAILED</span>
+        {% endif %}
+      </td>
+      <td>{{ r.created_at }}</td>
+      <td><a href="/results/{{ r.id }}">詳細 →</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">まだ分析履歴がありません。</p>
+{% endif %}
+{% endblock %}

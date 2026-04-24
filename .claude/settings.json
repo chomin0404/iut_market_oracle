@@ -1,0 +1,144 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Edit(CLAUDE.md)",
+      "Edit(SPEC.md)",
+      "Edit(TASKS.md)",
+      "Edit(notes/**)",
+      "Edit(papers/**)",
+      "Write(src/**)",
+      "Write(tests/**)",
+      "Write(configs/**)",
+      "Write(experiments/**)",
+      "Write(reports/**)",
+      "Write(data/processed/**)",
+      "Write(notebooks/**)",
+      "Bash(pytest -q)",
+      "Bash(ruff check .)",
+      "Bash(ruff format .)",
+      "Bash(pyright)",
+      "Bash(python -m src.main)",
+      "Bash(python -m src.report)",
+      "Bash(jupyter nbconvert --execute --to notebook notebooks/*.ipynb)",
+      "Bash(git status)",
+      "Bash(git diff)"
+    ],
+    "deny": [
+      "Write(data/raw/**)",
+      "Write(.env)",
+      "Write(**/*.pem)",
+      "Write(**/*secret*)",
+      "Bash(rm -rf *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(git push --force*)",
+      "Bash(git commit --amend)"
+    ]
+  },
+  "env": {
+    "PYTHONPATH": "./src",
+    "PROJECT_ROOT": ".",
+    "RESEARCH_MODE": "integrated",
+    "REPORTS_DIR": "./reports",
+    "EXPERIMENTS_DIR": "./experiments"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/reset-verification-state.sh",
+            "statusMessage": "Resetting verification markers"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.sh",
+            "statusMessage": "Checking protected files and artifact write policy"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Edit(*.py)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-edit-python-check.sh",
+            "statusMessage": "Running Ruff and targeted pytest after Python edit"
+          },
+          {
+            "type": "command",
+            "if": "Write(*.py)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-edit-python-check.sh",
+            "statusMessage": "Running Ruff and targeted pytest after Python write"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(make lint*)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/mark-verification.sh lint",
+            "statusMessage": "Marking lint verification complete"
+          },
+          {
+            "type": "command",
+            "if": "Bash(make test-cov*)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/mark-verification.sh test-cov",
+            "statusMessage": "Marking coverage verification complete"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-verify.sh",
+            "statusMessage": "Checking lint and coverage gates before stopping"
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "project_settings|local_settings|skills",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/audit-config-change.sh",
+            "statusMessage": "Writing config audit log"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(make report)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/allow-make-report.sh",
+            "statusMessage": "Auto-allowing safe report generation"
+          }
+        ]
+      }
+    ]
+  }
+}

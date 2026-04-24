@@ -1,0 +1,29 @@
+# Base-case DCF scenario assumptions
+# Units: monetary values in JPY millions unless noted otherwise.
+# All rates are annual, expressed as decimals (0.05 = 5%).
+
+name: base
+version: "1.0"
+description: >
+  Conservative base-case valuation using mid-cycle margins
+  and a moderate discount rate.  Assumptions are heuristic;
+  update with empirical evidence before reporting.
+
+params:
+  # Revenue
+  initial_revenue: 10000.0      # JPY millions — starting year revenue
+  revenue_growth:    0.05       # 5% annual top-line growth
+  forecast_years:    5          # explicit DCF horizon (integer)
+
+  # Profitability
+  ebit_margin:       0.12       # 12% EBIT / Revenue
+
+  # Taxes & reinvestment
+  tax_rate:          0.30       # effective corporate tax rate
+  capex_rate:        0.30       # capex as fraction of EBIT (net reinvestment proxy)
+
+  # Discount & terminal
+  discount_rate:     0.10       # WACC
+  terminal_growth_rate: 0.02    # long-run nominal growth (must be < discount_rate)
+
+random_seed: 42

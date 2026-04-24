@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}IUT Market Oracle — 結果 #{{ run_id }}{% endblock %}
+
+{% block content %}
+<a href="/" class="back-link">← 新しい分析</a>
+
+<h1>分析結果 #{{ run_id }}</h1>
+
+<div class="meta">
+  <div class="meta-item">
+    <div class="meta-label">ティッカー</div>
+    <div class="meta-value" style="font-size:14px">{{ tickers }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">通過銘柄数</div>
+    <div class="meta-value">{{ result_count }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">実行日時</div>
+    <div class="meta-value" style="font-size:14px">{{ created_at }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="meta-label">ステータス</div>
+    <div class="meta-value">
+      {% if status == "completed" %}
+        <span class="badge badge-stable">COMPLETED</span>
+      {% elif status in ["pending", "running"] %}
+        <span class="badge badge-running">{{ status | upper }}</span>
+      {% else %}
+        <span class="badge badge-evade">FAILED</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if status in ["pending", "running"] %}
+
+<div class="loading-section">
+  <div class="spinner"></div>
+  <p>分析を実行中です。しばらくお待ちください…</p>
+  <p class="hint">yfinance によるデータ取得と IUT パイプライン処理中</p>
+</div>
+<script>
+(function poll() {
+  fetch("/api/run/{{ run_id }}/status")
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === "completed" || data.status === "failed") {
+        location.reload();
+      } else {
+        setTimeout(poll, 2000);
+      }
+    })
+    .catch(() => setTimeout(poll, 3000));
+})();
+</script>
+
+{% elif status == "failed" %}
+
+<div class="error-section">
+  <p class="error-title">分析中にエラーが発生しました。</p>
+  {% if error_message %}
+  <pre class="error-detail">{{ error_message }}</pre>
+  {% endif %}
+</div>
+
+{% elif results %}
+
+<div class="action-bar">
+  <a href="/results/{{ run_id }}/export.csv" class="btn-export">↓ CSV ダウンロード</a>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-card">
+    <h3>IUT歪み (Distortion)</h3>
+    <div id="chart-distortion"></div>
+  </div>
+  <div class="chart-card">
+    <h3>共鳴純度 (Purity SNR)</h3>
+    <div id="chart-purity"></div>
+  </div>
+  <div class="chart-card">
+    <h3>Shannon エントロピー</h3>
+    <div id="chart-entropy"></div>
+  </div>
+  <div class="chart-card">
+    <h3>復元値平均 (Reconstructed Mean)</h3>
+    <div id="chart-recon"></div>
+  </div>
+</div>
+
+<h3>詳細テーブル</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Ticker</th>
+      <th>Distortion</th>
+      <th>Entropy</th>
+      <th>Purity (SNR)</th>
+      <th>Resonance</th>
+      <th>Recon Mean</th>
+      <th>Recon Entropy</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in results %}
+    <tr>
+      <td><strong>{{ r.ticker }}</strong></td>
+      <td>{{ "%.4f"|format(r.distortion) }}</td>
+      <td>{{ "%.4f"|format(r.entropy) }}</td>
+      <td>{{ "%.4f"|format(r.purity) }}</td>
+      <td>
+        {% if "STABLE" in r.resonance_status %}
+          <span class="badge badge-stable">STABLE</span>
+        {% else %}
+          <span class="badge badge-evade">EVADE</span>
+        {% endif %}
+      </td>
+      <td>{{ "%.6f"|format(r.reconstructed_mean) }}</td>
+      <td>{{ "%.4f"|format(r.recon_entropy) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3 style="margin-top:40px">価格履歴 (直近{{ lookback_days }}日)</h3>
+<div id="price-charts-grid" class="charts-grid"></div>
+
+<script>
+const RESULTS = {{ results_json | safe }};
+const tickers = RESULTS.map(r => r.ticker);
+const LAYOUT = {
+  paper_bgcolor: "transparent",
+  plot_bgcolor: "transparent",
+  font: { color: "#e6edf3", family: "SF Mono, Fira Code, monospace", size: 12 },
+  margin: { t: 10, b: 40, l: 55, r: 10 },
+  xaxis: { gridcolor: "#30363d", tickfont: { size: 11 } },
+  yaxis: { gridcolor: "#30363d" },
+};
+const CONFIG = { displayModeBar: false, responsive: true };
+
+// Distortion
+Plotly.newPlot("chart-distortion", [{
+  type: "bar", x: tickers, y: RESULTS.map(r => r.distortion),
+  marker: { color: "#d29922" },
+}], { ...LAYOUT, shapes: [{ type: "line", x0: -0.5, x1: tickers.length - 0.5, y0: 1.5, y1: 1.5, line: { color: "#f85149", dash: "dot" } }] }, CONFIG);
+
+// Purity
+Plotly.newPlot("chart-purity", [{
+  type: "bar", x: tickers, y: RESULTS.map(r => r.purity),
+  marker: { color: RESULTS.map(r => r.purity >= 1.2 ? "#00d084" : "#f85149") },
+}], { ...LAYOUT, shapes: [{ type: "line", x0: -0.5, x1: tickers.length - 0.5, y0: 1.2, y1: 1.2, line: { color: "#00d084", dash: "dot" } }] }, CONFIG);
+
+// Entropy
+Plotly.newPlot("chart-entropy", [{
+  type: "bar", x: tickers, y: RESULTS.map(r => r.entropy),
+  marker: { color: "#58a6ff" },
+}], { ...LAYOUT, shapes: [{ type: "line", x0: -0.5, x1: tickers.length - 0.5, y0: 1.5, y1: 1.5, line: { color: "#f85149", dash: "dot" } }] }, CONFIG);
+
+// Reconstructed Mean
+Plotly.newPlot("chart-recon", [{
+  type: "bar", x: tickers, y: RESULTS.map(r => r.reconstructed_mean),
+  marker: { color: "#bc8cff" },
+}], LAYOUT, CONFIG);
+
+// 価格履歴チャート（ティッカーごとに非同期取得）
+const priceGrid = document.getElementById("price-charts-grid");
+
+async function loadPriceChart(ticker) {
+  const card = document.createElement("div");
+  card.className = "chart-card";
+  const chartId = `price-${ticker.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  card.innerHTML = `<h3>${ticker} 価格推移</h3><div id="${chartId}"><p class="hint" style="padding:20px">読み込み中…</p></div>`;
+  priceGrid.appendChild(card);
+
+  try {
+    const resp = await fetch(`/api/price-history/${ticker}`);
+    const data = await resp.json();
+    if (!data.dates || data.dates.length === 0) {
+      document.getElementById(chartId).innerHTML = '<p class="hint" style="padding:20px">データなし</p>';
+      return;
+    }
+    Plotly.newPlot(chartId, [{
+      type: "scatter",
+      mode: "lines",
+      x: data.dates,
+      y: data.prices,
+      name: ticker,
+      line: { color: "#58a6ff", width: 1.5 },
+      fill: "tozeroy",
+      fillcolor: "rgba(88,166,255,0.07)",
+    }], {
+      ...LAYOUT,
+      yaxis: { ...LAYOUT.yaxis, title: "Close (USD)" },
+    }, CONFIG);
+  } catch {
+    document.getElementById(chartId).innerHTML = '<p class="hint" style="padding:20px">取得エラー</p>';
+  }
+}
+
+tickers.forEach(t => loadPriceChart(t));
+</script>
+
+{% else %}
+<p class="empty">スクリーニングを通過した銘柄がありませんでした。<br>
+P/B比の歪みが閾値（1.5）以下、またはエントロピーが高すぎる可能性があります。</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,22 @@
+base_case:
+  initial_fcf: 100.0
+  growth_rate: 0.10
+  discount_rate: 0.10
+  forecast_years: 5
+  terminal_growth_rate: 0.03
+
+sensitivity:
+  growth_rate:
+    values: [0.06, 0.08, 0.10, 0.12, 0.14]
+
+  discount_rate:
+    values: [0.08, 0.09, 0.10, 0.11, 0.12]
+
+  terminal_growth_rate:
+    values: [0.01, 0.02, 0.03, 0.04]
+
+  two_way:
+    x_name: growth_rate
+    x_values: [0.08, 0.10, 0.12]
+    y_name: discount_rate
+    y_values: [0.09, 0.10, 0.11]

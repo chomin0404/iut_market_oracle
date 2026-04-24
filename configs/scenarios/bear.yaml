@@ -1,0 +1,22 @@
+# Bear-case DCF scenario assumptions
+# Stagnant growth, margin compression, higher discount rate.
+
+name: bear
+version: "1.0"
+description: >
+  Pessimistic scenario: revenue headwinds, margin pressure,
+  and elevated cost of capital.  Use as stress-test floor.
+
+params:
+  initial_revenue:      10000.0
+  revenue_growth:        0.01    # 1% — near-stagnation
+  forecast_years:        5
+
+  ebit_margin:           0.07    # 7% — margin compression
+  tax_rate:              0.33
+  capex_rate:            0.40    # higher reinvestment need
+
+  discount_rate:         0.13    # elevated risk premium
+  terminal_growth_rate:  0.01
+
+random_seed: 42

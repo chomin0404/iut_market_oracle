@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}IUT Market Oracle — 分析履歴{% endblock %}
+
+{% block content %}
+<a href="/" class="back-link">← 新しい分析</a>
+<h1>分析履歴</h1>
+
+{% if runs %}
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>ティッカー</th>
+      <th>通過銘柄数</th>
+      <th>ステータス</th>
+      <th>実行日時</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in runs %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.tickers }}</td>
+      <td>{{ r.result_count }}</td>
+      <td>
+        {% if r.status == "completed" %}
+          <span class="badge badge-stable">DONE</span>
+        {% elif r.status in ["pending", "running"] %}
+          <span class="badge badge-running">{{ r.status | upper }}</span>
+        {% else %}
+          <span class="badge badge-evade">FAILED</span>
+        {% endif %}
+      </td>
+      <td>{{ r.created_at }}</td>
+      <td><a href="/results/{{ r.id }}">詳細 →</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">まだ分析履歴がありません。</p>
+{% endif %}
+{% endblock %}

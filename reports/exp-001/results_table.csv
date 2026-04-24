@@ -1,0 +1,4 @@
+scenario,ev_jpy_millions,assumption_version,dEV_dinitial_revenue,dEV_drevenue_growth,dEV_debit_margin,dEV_dtax_rate,dEV_dcapex_rate,dEV_ddiscount_rate,dEV_dterminal_growth_rate
+base,6941.82,1.0,0.6942,28886.5156,57848.4756,-17354.5427,-17354.5427,-88197.4819,65378.811
+bear,1590.75,1.0,0.1591,6370.8206,22725.0,-5891.6667,-5891.6667,-13256.2502,8460.4294
+bull,23573.03,1.0,2.3573,99170.4059,130961.2934,-50155.389,-50155.389,-483049.8904,400588.7604

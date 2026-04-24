@@ -1,0 +1,22 @@
+# Bull-case DCF scenario assumptions
+# Higher growth, better margins, lower discount rate.
+
+name: bull
+version: "1.0"
+description: >
+  Optimistic scenario: strong revenue growth, margin expansion,
+  and favourable capital market conditions.  Treat as upper bound.
+
+params:
+  initial_revenue:      10000.0
+  revenue_growth:        0.10    # 10% — strong growth cycle
+  forecast_years:        5
+
+  ebit_margin:           0.18    # 18% — margin expansion
+  tax_rate:              0.28
+  capex_rate:            0.25    # lower reinvestment drag
+
+  discount_rate:         0.08    # lower risk premium
+  terminal_growth_rate:  0.03
+
+random_seed: 42
