@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 import numpy as np
 from scipy.stats import chi2 as _chi2_dist
 
-from schemas import MCSimReport
+from schemas import MCSimReport, RunResult, RunTrace
 
 # ---------------------------------------------------------------------------
 # Physical constants
@@ -460,6 +460,7 @@ def run_mc_simulation(
     all_labels: list[int] = []
     delay_samples: list[float] = []
     degradation_samples: list[float] = []
+    run_results: list[RunResult] = []
 
     for _mc in range(config.n_mc):
         # Initialise receiver state
@@ -470,6 +471,10 @@ def run_mc_simulation(
         b_common = rng.normal(0.0, config.spoof_bias_std)
 
         first_alarm: int | None = None
+        epoch_scores: list[float] = []
+        epoch_alarms: list[bool] = []
+        epoch_delays: list[float | None] = []
+        epoch_pvt_errors: list[float] = []
 
         for t in range(T):
             vel, clock_drift = _propagate_state(vel, clock_drift, rng)
@@ -501,21 +506,42 @@ def run_mc_simulation(
             _, residuals = wls_pvt(los, dop_dev, W, S)
             _, residuals_all = wls_pvt(los, dop_dev, W, list(range(config.n_sats)))
 
+            pvt_err = float(np.linalg.norm(residuals))
             score = detection_score(residuals, W, S)
             all_scores.append(score)
             all_labels.append(int(under_attack))
 
             alarm = score > tau
-            if alarm and first_alarm is None and under_attack:
+            is_first_alarm = alarm and first_alarm is None and under_attack
+            if is_first_alarm:
                 first_alarm = t
 
+            epoch_scores.append(score)
+            epoch_alarms.append(bool(alarm))
+            epoch_pvt_errors.append(pvt_err)
+            epoch_delays.append(float(t - attack_start) if is_first_alarm else None)
+
             if under_attack:
-                r_sub = float(np.linalg.norm(residuals))
                 r_all = float(np.linalg.norm(residuals_all)) + 1e-12
-                degradation_samples.append(r_sub / r_all)
+                degradation_samples.append(pvt_err / r_all)
 
         if first_alarm is not None:
             delay_samples.append(float(first_alarm - attack_start))
+
+        pvt_errors_arr = np.array(epoch_pvt_errors, dtype=float)
+        run_results.append(RunResult(
+            score_max=float(max(epoch_scores)),
+            alarm_any=any(epoch_alarms),
+            delay=float(first_alarm - attack_start) if first_alarm is not None else None,
+            pvt_rmse=float(np.sqrt(np.mean(pvt_errors_arr**2))),
+            pvt_max=float(pvt_errors_arr.max()),
+            trace=RunTrace(
+                score=epoch_scores,
+                alarm=epoch_alarms,
+                delay=epoch_delays,
+                pvt_error=epoch_pvt_errors,
+            ),
+        ))
 
     scores_arr = np.array(all_scores, dtype=float)
     labels_arr = np.array(all_labels, dtype=int)
@@ -548,4 +574,5 @@ def run_mc_simulation(
         p_false_alarm=p_fa,
         n_mc=config.n_mc,
         produced_at=datetime.now(timezone.utc),
+        runs=run_results,
     )

@@ -583,6 +583,41 @@ class EntropyReport(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class RunTrace(BaseModel):
+    """Per-epoch time series for a single MC run (T1300).
+
+    All lists have length n_epochs.
+    delay[t] is t − attack_start when the first alarm fires at epoch t;
+    None for all other epochs.
+    """
+
+    score: list[float] = Field(..., description="Detection score T(t) per epoch [Hz²]")
+    alarm: list[bool] = Field(..., description="T(t) > τ at each epoch")
+    delay: list[float | None] = Field(
+        ..., description="t − attack_start at first alarm epoch; None elsewhere"
+    )
+    pvt_error: list[float] = Field(..., description="‖r_S(t)‖₂ WLS residual norm [Hz]")
+
+
+class RunResult(BaseModel):
+    """Per-run summary and trace for one MC realisation (T1300).
+
+    score_max:  max T(t) over the run.
+    alarm_any:  True iff at least one epoch triggered an alarm.
+    delay:      First alarm delay [epochs after attack start]; None if undetected.
+    pvt_rmse:   sqrt(mean(‖r_S(t)‖²)) over all epochs [Hz].
+    pvt_max:    max(‖r_S(t)‖) over all epochs [Hz].
+    trace:      Per-epoch time series.
+    """
+
+    score_max: float = Field(..., ge=0.0)
+    alarm_any: bool
+    delay: float | None = Field(..., description="Epochs from attack start to first alarm")
+    pvt_rmse: float = Field(..., ge=0.0)
+    pvt_max: float = Field(..., ge=0.0)
+    trace: RunTrace
+
+
 class MCSimReport(BaseModel):
     """Results of the Monte Carlo GNSS spoofing detection simulation (T1300).
 
@@ -621,3 +656,7 @@ class MCSimReport(BaseModel):
     p_false_alarm: float = Field(..., ge=0.0, le=1.0)
     n_mc: int = Field(..., ge=1)
     produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    runs: list[RunResult] = Field(
+        default_factory=list,
+        description="Per-run summary and trace for each MC realisation",
+    )

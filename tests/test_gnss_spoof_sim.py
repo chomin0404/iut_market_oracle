@@ -343,6 +343,36 @@ class TestRunMcSimulationSchema:
     def test_produced_at_set(self):
         assert self.report.produced_at is not None
 
+    def test_runs_length_matches_n_mc(self):
+        assert len(self.report.runs) == _SMALL.n_mc
+
+    def test_run_trace_length_matches_n_epochs(self):
+        for run in self.report.runs:
+            assert len(run.trace.score) == _SMALL.n_epochs
+            assert len(run.trace.alarm) == _SMALL.n_epochs
+            assert len(run.trace.delay) == _SMALL.n_epochs
+            assert len(run.trace.pvt_error) == _SMALL.n_epochs
+
+    def test_run_summary_fields_nonneg(self):
+        for run in self.report.runs:
+            assert run.score_max >= 0.0
+            assert run.pvt_rmse >= 0.0
+            assert run.pvt_max >= 0.0
+
+    def test_run_score_max_consistent_with_trace(self):
+        for run in self.report.runs:
+            assert math.isclose(run.score_max, max(run.trace.score), rel_tol=1e-9)
+
+    def test_run_alarm_any_consistent_with_trace(self):
+        for run in self.report.runs:
+            assert run.alarm_any == any(run.trace.alarm)
+
+    def test_run_delay_in_trace_at_most_one_nonnone(self):
+        """trace.delay has at most one non-None entry per run (first alarm only)."""
+        for run in self.report.runs:
+            nonnone = [d for d in run.trace.delay if d is not None]
+            assert len(nonnone) <= 1
+
 
 # ---------------------------------------------------------------------------
 # run_mc_simulation — statistical properties
