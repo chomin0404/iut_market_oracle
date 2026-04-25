@@ -21,8 +21,9 @@ from gnss.core import (
     run_simulation,
     verify_tesla_key,
 )
+from gnss.multi_sensor_sim import MultiSensorConfig, run_ms_simulation
 from gnss.spoof_sim import SimConfig, run_mc_simulation
-from schemas import MCSimReport
+from schemas import MCSimReport, MSSimReport
 
 router = APIRouter()
 
@@ -319,5 +320,81 @@ def spoof_sim(req: SpooferSimRequest) -> MCSimReport:
             random_seed=req.random_seed,
         )
         return run_mc_simulation(config)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# T1350  Multi-sensor Monte Carlo spoofing detection
+# ---------------------------------------------------------------------------
+
+_N_MS_MC_MAX: int = 500  # upper bound to keep response time reasonable
+
+
+class MultiSensorSimRequest(BaseModel):
+    T: int = Field(default=200, ge=20, le=1000, description="Total epochs per trial")
+    dt: float = Field(default=1.0, gt=0.0, description="Epoch duration [s]")
+    n_sat: int = Field(default=8, ge=4, le=32, description="Number of visible satellites")
+    attack_start: int = Field(default=80, ge=0, description="First attacked epoch")
+    attack_end: int = Field(default=140, ge=1, description="Last attacked epoch (inclusive)")
+    capture_len: int = Field(default=20, ge=1, description="Gradual capture ramp length [epochs]")
+    n_nominal: int = Field(default=100, ge=1, le=_N_MS_MC_MAX, description="Genuine MC trials")
+    n_attack: int = Field(default=100, ge=1, le=_N_MS_MC_MAX, description="Attack MC trials")
+    noise_pr: float = Field(default=2.0, gt=0.0, description="PR noise 1-σ [m]")
+    noise_dopp: float = Field(default=0.08, gt=0.0, description="Doppler noise 1-σ [Hz]")
+    noise_aoa: float = Field(default=3.0, gt=0.0, description="AoA noise 1-σ [deg]")
+    noise_ins: float = Field(default=1.5, gt=0.0, description="INS residual noise 1-σ [m/s]")
+    carryoff_rate: float = Field(default=4.0, gt=0.0, description="PR drift rate [m/epoch]")
+    spoof_aoa_center: float = Field(default=30.0, description="Mean spoofed AoA [deg]")
+    score_weights: tuple[float, float, float] = Field(
+        default=(0.55, 0.25, 0.20),
+        description="Detection score weights (w_m, w_chi, w_lor_dev)",
+    )
+    detect_threshold: float = Field(default=0.62, gt=0.0, description="Alarm threshold")
+    hazard_pos: float = Field(default=150.0, gt=0.0, description="Hazard pos-error threshold [m]")
+    random_seed: int = Field(default=42, description="RNG seed for reproducibility")
+
+
+@router.post("/multi-sensor-sim", response_model=MSSimReport)
+def multi_sensor_sim(req: MultiSensorSimRequest) -> MSSimReport:
+    """Monte Carlo multi-sensor GNSS spoofing detection simulation (T1350).
+
+    Sensors fused per epoch:
+    - **Pseudorange (PR)**: meaconing drift proxy
+    - **Doppler**: Doppler shift consistency
+    - **Angle-of-Arrival (AoA)**: geometry diversity
+    - **INS residuals**: inertial inconsistency
+
+    Attack model (gradual meaconing):
+        x(t) = (1−α)·x_genuine + α·x_spoof,
+        α = min(1, max(0, (t−t₀+1)/capture_len))
+
+    Detection: weighted score s = w₁·m + w₂·clip(chi/χ₀) + w₃·clip(lor_dev)
+    compared against detect_threshold.
+
+    Returns ROC curve, AUC, detection delay statistics, and per-run traces.
+    """
+    try:
+        config = MultiSensorConfig(
+            T=req.T,
+            dt=req.dt,
+            n_sat=req.n_sat,
+            attack_start=req.attack_start,
+            attack_end=req.attack_end,
+            capture_len=req.capture_len,
+            n_nominal=req.n_nominal,
+            n_attack=req.n_attack,
+            noise_pr=req.noise_pr,
+            noise_dopp=req.noise_dopp,
+            noise_aoa=req.noise_aoa,
+            noise_ins=req.noise_ins,
+            carryoff_rate=req.carryoff_rate,
+            spoof_aoa_center=req.spoof_aoa_center,
+            score_weights=req.score_weights,
+            detect_threshold=req.detect_threshold,
+            hazard_pos=req.hazard_pos,
+            random_seed=req.random_seed,
+        )
+        return run_ms_simulation(config)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -660,3 +660,95 @@ class MCSimReport(BaseModel):
         default_factory=list,
         description="Per-run summary and trace for each MC realisation",
     )
+
+
+# ---------------------------------------------------------------------------
+# T1350  Multi-sensor GNSS spoofing detection schemas
+# ---------------------------------------------------------------------------
+
+
+class MSRunTrace(BaseModel):
+    """Per-epoch time series for a single multi-sensor MC run (T1350).
+
+    All lists have length T (cfg.T epochs).
+    score[t]: weighted detection score s(t) = w₁·m + w₂·clip(chi/χ₀) + w₃·clip(lor_dev).
+    alarm[t]: s(t) > detect_threshold.
+    mix[t]:   spoofing mix fraction α ∈ [0, 1]; 0 for genuine trials.
+    m[t]:     largest-connected-component fraction from percolation graph.
+    chi[t]:   chi statistic (degree mean + variance / (mean + ε)) / n_sat.
+    lor_dev[t]: Lorentz AoA diversity deviation ∈ [0, 1].
+    pos_err[t]: position error proxy [m].
+    """
+
+    score: list[float] = Field(..., description="Detection score s(t) per epoch")
+    alarm: list[bool] = Field(..., description="s(t) > threshold at each epoch")
+    mix: list[float] = Field(..., description="Spoofing mix fraction α(t)")
+    m: list[float] = Field(..., description="Percolation largest-component fraction m(t)")
+    chi: list[float] = Field(..., description="Degree heterogeneity statistic chi(t)")
+    lor_dev: list[float] = Field(..., description="Lorentz AoA diversity deviation")
+    pos_err: list[float] = Field(..., description="Position error proxy [m]")
+
+
+class MSRunResult(BaseModel):
+    """Per-run summary for one multi-sensor MC realisation (T1350).
+
+    score_max:       max s(t) over the trial.
+    alarm_any:       True iff any epoch triggered an alarm.
+    delay:           First alarm epoch − attack_start; None if undetected or genuine.
+    pvt_rmse:        sqrt(mean(pos_err²)) over all epochs [m].
+    pvt_max:         max(pos_err) over all epochs [m].
+    hazard_no_alarm: 1 if max pos-error exceeded hazard_pos during attack with no alarm.
+    trace:           Per-epoch time series.
+    """
+
+    score_max: float = Field(..., ge=0.0)
+    alarm_any: bool
+    delay: int | None = Field(..., description="Epochs from attack start to first alarm")
+    pvt_rmse: float = Field(..., ge=0.0)
+    pvt_max: float = Field(..., ge=0.0)
+    hazard_no_alarm: int = Field(..., ge=0, le=1)
+    trace: MSRunTrace
+
+
+class MSSimReport(BaseModel):
+    """Results of the multi-sensor Monte Carlo GNSS spoofing simulation (T1350).
+
+    p_fa:                  Empirical false-alarm rate at the fixed detect_threshold.
+    p_d:                   Empirical detection probability at the fixed detect_threshold.
+    p_md:                  Miss-detection probability = 1 − p_d.
+    median_delay:          Median first-alarm delay over detected attack runs [epochs];
+                           None if no run detected.
+    mean_delay:            Mean first-alarm delay [epochs]; None if no run detected.
+    auc:                   Area under ROC curve (trapezoidal integration of score_max).
+    nominal_rmse_mean:     Mean pvt_rmse over genuine runs [m].
+    attack_rmse_mean:      Mean pvt_rmse over attack runs [m].
+    attack_pvt_max_mean:   Mean pvt_max over attack runs [m].
+    hazard_no_alarm_rate:  Fraction of attack runs with hazard and no alarm.
+    roc_fpr / roc_tpr:     FPR/TPR pairs for ROC curve plotting.
+    n_nominal / n_attack:  Run counts.
+    runs:                  Per-run results (nominal runs first, attack runs second).
+    """
+
+    p_fa: float = Field(..., ge=0.0, le=1.0)
+    p_d: float = Field(..., ge=0.0, le=1.0)
+    p_md: float = Field(..., ge=0.0, le=1.0)
+    median_delay: float | None = Field(
+        ..., description="Median epochs from attack start to first alarm"
+    )
+    mean_delay: float | None = Field(
+        ..., description="Mean epochs from attack start to first alarm"
+    )
+    auc: float = Field(..., ge=0.0, le=1.0)
+    nominal_rmse_mean: float = Field(..., ge=0.0)
+    attack_rmse_mean: float = Field(..., ge=0.0)
+    attack_pvt_max_mean: float = Field(..., ge=0.0)
+    hazard_no_alarm_rate: float = Field(..., ge=0.0, le=1.0)
+    roc_fpr: list[float]
+    roc_tpr: list[float]
+    n_nominal: int = Field(..., ge=1)
+    n_attack: int = Field(..., ge=1)
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    runs: list[MSRunResult] = Field(
+        default_factory=list,
+        description="Per-run results: nominal runs first, attack runs second",
+    )
