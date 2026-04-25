@@ -576,3 +576,48 @@ class EntropyReport(BaseModel):
                 f"entropy_series length ({len(self.entropy_series)})"
             )
         return self
+
+
+# ---------------------------------------------------------------------------
+# T1300  Monte Carlo GNSS spoofing detection schemas
+# ---------------------------------------------------------------------------
+
+
+class MCSimReport(BaseModel):
+    """Results of the Monte Carlo GNSS spoofing detection simulation (T1300).
+
+    roc_fpr / roc_tpr:
+        FPR/TPR pairs at 200 thresholds for ROC curve plotting.
+    auc:
+        Area under ROC curve (trapezoidal integration).
+    mean_detection_delay / std_detection_delay:
+        First-alarm epoch relative to attack start [epochs].
+        mean is NaN when no run achieved detection.
+    mean_pvt_degradation / std_pvt_degradation:
+        Ratio ||r_S|| / ||r_all|| during attack epochs.  Values < 1
+        indicate subset selection improves PVT accuracy under attack.
+    p_detection:
+        Empirical detection probability at the Neyman-Pearson threshold.
+    p_false_alarm:
+        Empirical false-alarm rate at the NP threshold.
+    n_mc:
+        Number of Monte Carlo runs used.
+    """
+
+    roc_fpr: list[float]
+    roc_tpr: list[float]
+    auc: float = Field(..., ge=0.0, le=1.0)
+    mean_detection_delay: float = Field(
+        ...,
+        description="Mean epochs from attack start to first alarm (NaN if no detection)",
+    )
+    std_detection_delay: float = Field(..., ge=0.0)
+    mean_pvt_degradation: float = Field(
+        ...,
+        description="Mean ||r_S|| / ||r_all|| during attack epochs",
+    )
+    std_pvt_degradation: float = Field(..., ge=0.0)
+    p_detection: float = Field(..., ge=0.0, le=1.0)
+    p_false_alarm: float = Field(..., ge=0.0, le=1.0)
+    n_mc: int = Field(..., ge=1)
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

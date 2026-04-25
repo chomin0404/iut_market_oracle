@@ -3,6 +3,7 @@
 POST /gnss/simulate       — Run OSNMA/TESLA simulation, return detection metrics
 POST /gnss/verify-key     — Verify a single TESLA key against a chain anchor
 POST /gnss/detect         — Stream NAV observations through the TESLA verifier
+POST /gnss/spoof-sim      — Monte Carlo signal-level spoofing detection (T1300)
 """
 from __future__ import annotations
 
@@ -16,12 +17,12 @@ from gnss.core import (
     NavMessage,
     OSNMAAuthority,
     OSNMAReceiver,
-    OSNMATransmitter,
     TESLAKeyChain,
-    make_eph,
     run_simulation,
     verify_tesla_key,
 )
+from gnss.spoof_sim import SimConfig, run_mc_simulation
+from schemas import MCSimReport
 
 router = APIRouter()
 
@@ -249,3 +250,78 @@ def detect(req: DetectRequest) -> DetectResponse:
         total_verified=len(results),
         detected_count=detected_count,
     )
+
+
+# ---------------------------------------------------------------------------
+# T1300  Monte Carlo signal-level spoofing detection
+# ---------------------------------------------------------------------------
+
+_N_MC_MAX: int = 2000   # upper bound to keep response time reasonable
+
+
+class SpooferSimRequest(BaseModel):
+    n_mc: int = Field(default=200, ge=1, le=_N_MC_MAX, description="Monte Carlo runs")
+    n_epochs: int = Field(default=80, ge=20, le=500, description="Time steps per run")
+    n_sats: int = Field(default=6, ge=5, le=20, description="Number of visible satellites")
+    attack_start_frac: float = Field(
+        default=0.40, gt=0.0, lt=1.0, description="Attack start as fraction of n_epochs"
+    )
+    attack_duration_frac: float = Field(
+        default=0.35, gt=0.0, lt=1.0, description="Attack duration as fraction of n_epochs"
+    )
+    doppler_noise_std: float = Field(
+        default=0.30, gt=0.0, description="Genuine Doppler noise 1-σ [Hz]"
+    )
+    spoof_bias_std: float = Field(
+        default=2.50, gt=0.0, description="Common meaconing bias 1-σ [Hz]"
+    )
+    spoof_diff_std: float = Field(
+        default=0.80, ge=0.0, description="Per-satellite differential spoofing noise 1-σ [Hz]"
+    )
+    graph_sigma: float = Field(
+        default=1.50, gt=0.0, description="Gaussian kernel bandwidth σ [Hz]"
+    )
+    false_alarm_rate: float = Field(
+        default=0.05, gt=0.0, lt=1.0, description="Neyman-Pearson target false-alarm rate α"
+    )
+    subset_size: int = Field(
+        default=4, ge=2, description="Satellite subset size k (must be < n_sats)"
+    )
+    random_seed: int = Field(default=42, description="RNG seed for reproducibility")
+
+
+@router.post("/spoof-sim", response_model=MCSimReport)
+def spoof_sim(req: SpooferSimRequest) -> MCSimReport:
+    """Monte Carlo GNSS signal-level spoofing detection simulation (T1300).
+
+    Simulates M independent runs of T epochs each.  In each run:
+
+    - Genuine satellites: Doppler deviations Δf_i ∼ N(0, σ_D²)
+    - Attack window: meaconing bias  b_i = b_common + δ_i,
+      b_common ∼ N(0, σ_bias²),  δ_i ∼ N(0, σ_diff²)
+    - Similarity graph: w_{ij} = exp(−|Δf_i − Δf_j|² / σ²)
+    - m(t) = det(I + L_w)  — all-forests count (cycle matroid)
+    - chi(t) = Σ(Δf_i − mean)² / σ_D²  — Doppler chi-squared
+    - Subset S_t selected by greedy Fiedler-value maximisation
+    - Detection score T = rᵀ diag(w_S) r  tested against χ²_{1−α}(k−4)
+
+    Returns ROC curve, AUC, detection delay, and PVT degradation statistics.
+    """
+    try:
+        config = SimConfig(
+            n_mc=req.n_mc,
+            n_epochs=req.n_epochs,
+            n_sats=req.n_sats,
+            attack_start_frac=req.attack_start_frac,
+            attack_duration_frac=req.attack_duration_frac,
+            doppler_noise_std=req.doppler_noise_std,
+            spoof_bias_std=req.spoof_bias_std,
+            spoof_diff_std=req.spoof_diff_std,
+            graph_sigma=req.graph_sigma,
+            false_alarm_rate=req.false_alarm_rate,
+            subset_size=req.subset_size,
+            random_seed=req.random_seed,
+        )
+        return run_mc_simulation(config)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
