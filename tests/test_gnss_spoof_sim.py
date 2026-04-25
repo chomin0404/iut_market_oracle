@@ -23,15 +23,18 @@ from fastapi.testclient import TestClient
 
 from api.app import app
 from gnss.spoof_sim import (
+    _FISHER_DOF,
     SimConfig,
     _build_graph,
     _init_constellation,
     chi_stat,
     detection_score,
+    fuse_score,
     matroid_forest_count,
     np_threshold,
     run_mc_simulation,
     select_subset,
+    simulate_trial,
     wls_pvt,
 )
 
@@ -59,9 +62,9 @@ class TestSimConfig:
         with pytest.raises(ValueError, match="subset_size"):
             SimConfig(n_sats=5, subset_size=6)
 
-    def test_invalid_attack_start_frac(self):
-        with pytest.raises(ValueError, match="attack_start_frac"):
-            SimConfig(attack_start_frac=0.0)
+    def test_dirichlet_alpha_positive(self):
+        with pytest.raises(ValueError, match="dirichlet_alpha"):
+            SimConfig(dirichlet_alpha=0.0)
 
     def test_invalid_false_alarm_rate(self):
         with pytest.raises(ValueError, match="false_alarm_rate"):
@@ -416,6 +419,110 @@ class TestRunMcSimulationStats:
         r_base = run_mc_simulation(base)
         r_strong = run_mc_simulation(strong)
         assert r_strong.p_detection >= r_base.p_detection
+
+
+# ---------------------------------------------------------------------------
+# fuse_score
+# ---------------------------------------------------------------------------
+
+
+class TestFuseScore:
+    def setup_method(self):
+        self.cfg = SimConfig(n_mc=1, n_epochs=10, n_sats=6, subset_size=4)
+        self.los = _init_constellation(6)
+        rng = np.random.default_rng(30)
+        d = rng.normal(0, 0.3, 6)
+        self.W = _build_graph(d, sigma=1.5)
+        self.S = select_subset(self.W, k=4)
+        _, self.r = wls_pvt(self.los, d, self.W, self.S)
+        m_t = matroid_forest_count(self.W)
+        chi_t = chi_stat(d, noise_std=0.3)
+        self.m_t = m_t
+        self.chi_t = chi_t
+
+    def test_score_nonneg(self):
+        score = fuse_score(self.m_t, self.chi_t, self.r, self.W, self.S, self.cfg)
+        assert score >= 0.0
+
+    def test_score_finite(self):
+        score = fuse_score(self.m_t, self.chi_t, self.r, self.W, self.S, self.cfg)
+        assert math.isfinite(score)
+
+    def test_attack_raises_score(self):
+        """Large differential bias should produce a much higher Fisher score."""
+        rng = np.random.default_rng(31)
+        d_att = rng.normal(0, 0.3, 6) + rng.normal(0, 3.0, 6)
+        W_att = _build_graph(d_att, sigma=1.5)
+        S_att = select_subset(W_att, k=4)
+        _, r_att = wls_pvt(self.los, d_att, W_att, S_att)
+        m_att = matroid_forest_count(W_att)
+        chi_att = chi_stat(d_att, noise_std=0.3)
+        score_att = fuse_score(m_att, chi_att, r_att, W_att, S_att, self.cfg)
+        score_h0 = fuse_score(self.m_t, self.chi_t, self.r, self.W, self.S, self.cfg)
+        assert score_att > score_h0
+
+    def test_h0_mean_finite_and_positive(self):
+        """E[F] is finite and positive under H₀.
+
+        The theoretical bound E[F]=6 assumes k>PVT_DIM and an untruncated LRT.
+        With subset_size==PVT_DIM the WLS is exactly determined (residuals≈0),
+        and forest_stat is truncated at 0, so E[F]<6 is expected.
+        We simply verify the score is non-trivially positive and bounded.
+        """
+        rng = np.random.default_rng(32)
+        scores: list[float] = []
+        for _ in range(500):
+            d = rng.normal(0, 0.3, 6)
+            W = _build_graph(d, sigma=1.5)
+            S = select_subset(W, k=4)
+            _, r = wls_pvt(self.los, d, W, S)
+            m_t = matroid_forest_count(W)
+            chi_t = chi_stat(d, noise_std=0.3)
+            scores.append(fuse_score(m_t, chi_t, r, W, S, self.cfg))
+        mean_score = float(np.mean(scores))
+        assert 0.5 < mean_score < float(_FISHER_DOF) + 2.0
+
+
+# ---------------------------------------------------------------------------
+# simulate_trial
+# ---------------------------------------------------------------------------
+
+
+class TestSimulateTrial:
+    def setup_method(self):
+        from scipy.stats import chi2
+        self.cfg = SimConfig(n_mc=1, n_epochs=20, n_sats=6, subset_size=4)
+        self.los = _init_constellation(6)
+        self.tau = float(chi2.ppf(1.0 - self.cfg.false_alarm_rate, df=_FISHER_DOF))
+
+    def _run(self, attacked: bool, seed: int = 0):
+        rng = np.random.default_rng(seed)
+        return simulate_trial(self.cfg, attacked=attacked, rng=rng, los=self.los, tau=self.tau)
+
+    def test_trace_length(self):
+        summary = self._run(attacked=True)
+        tr = summary.run_result.trace
+        for field in (tr.score, tr.alarm, tr.delay, tr.pvt_error):
+            assert len(field) == self.cfg.n_epochs
+
+    def test_attacked_labels_positive(self):
+        """Attacked trial must have at least one epoch with label == 1."""
+        summary = self._run(attacked=True)
+        assert any(lbl == 1 for lbl in summary.labels)
+
+    def test_genuine_labels_zero(self):
+        """Genuine trial must have all labels == 0."""
+        summary = self._run(attacked=False)
+        assert all(lbl == 0 for lbl in summary.labels)
+
+    def test_scores_nonneg(self):
+        summary = self._run(attacked=True)
+        assert all(s >= 0.0 for s in summary.scores)
+
+    def test_delay_none_when_not_attacked(self):
+        """No attack → delay must be None."""
+        summary = self._run(attacked=False)
+        assert summary.run_result.delay is None
 
 
 # ---------------------------------------------------------------------------

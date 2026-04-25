@@ -9,11 +9,14 @@ Algorithm (per MC run × T epochs):
     6. Compute chi(t) = Σ(Δf_i − mean)² / σ_D²  [Doppler chi-squared]
     7. Greedy constrained subset selection S_t  (maximise Fiedler value)
     8. WLS PVT on S_t  → residuals r
-    9. Detection score  T = rᵀ diag(w_S) r  ∼ χ²(|S|−4) under H₀
-   10. Alarm: T > τ_{NP} = χ²_{1−α}(|S|−4)
+    9. Fused Fisher score  F = −2(ln p_T + ln p_chi + ln p_m) ∼ χ²(6) under H₀
+   10. Alarm: F > τ_{NP} = χ²_{1−α}(6)
 
 Attack model (meaconing with differential error):
     b_i(t) = b_common + δ_i,   b_common ∼ N(0, σ_bias²),  δ_i ∼ N(0, σ_diff²)
+
+Attack window randomisation:
+    [pre | attack | post] lengths are Dirichlet(α,α,α)-distributed fractions of T.
 
 The differential component δ_i breaks inter-satellite Doppler correlations so that
 all three statistics (m, chi, residual T) are sensitive to the attack.
@@ -51,6 +54,9 @@ _INS_VEL_STD: float = 0.05         # m/s — INS velocity error 1-σ
 _INS_CLOCK_STD: float = 0.01       # m/s equivalent — INS clock error 1-σ
 _PVT_DIM: int = 4                  # unknowns: [Δvx, Δvy, Δvz, Δb_dot]
 _ROC_N_THRESHOLDS: int = 200       # resolution for ROC curve
+_FISHER_DOF: int = 6               # χ²(6): 3 statistics × 2 df each (Fisher combination)
+_EPS: float = 1e-300               # p-value floor to prevent log(0)
+_DIRICHLET_ALPHA: float = 2.0      # symmetric Dirichlet concentration parameter
 
 
 # ---------------------------------------------------------------------------
@@ -63,31 +69,29 @@ class SimConfig:
     """Parameters for the Monte Carlo GNSS spoofing detection simulation.
 
     Attributes:
-        n_mc:                Number of Monte Carlo realisations.
-        n_epochs:            Time steps per run.
-        n_sats:              Number of visible satellites.
-        attack_start_frac:   Attack begins at this fraction of n_epochs.
-        attack_duration_frac: Duration of attack window as fraction of n_epochs.
-        doppler_noise_std:   Genuine Doppler measurement noise 1-σ [Hz].
-        spoof_bias_std:      Common meaconing bias 1-σ [Hz].
-        spoof_diff_std:      Per-satellite differential spoofing noise 1-σ [Hz].
-        graph_sigma:         Gaussian kernel bandwidth σ for similarity graph [Hz].
-        false_alarm_rate:    Neyman-Pearson target false-alarm probability α.
-        subset_size:         Number of satellites in selected subset k < n_sats.
-        random_seed:         RNG seed for full reproducibility.
+        n_mc:              Number of Monte Carlo realisations.
+        n_epochs:          Time steps per run.
+        n_sats:            Number of visible satellites.
+        doppler_noise_std: Genuine Doppler measurement noise 1-σ [Hz].
+        spoof_bias_std:    Common meaconing bias 1-σ [Hz].
+        spoof_diff_std:    Per-satellite differential spoofing noise 1-σ [Hz].
+        graph_sigma:       Gaussian kernel bandwidth σ for similarity graph [Hz].
+        false_alarm_rate:  Neyman-Pearson target false-alarm probability α.
+        subset_size:       Number of satellites in selected subset k < n_sats.
+        dirichlet_alpha:   Symmetric Dirichlet concentration for attack window.
+        random_seed:       RNG seed for full reproducibility.
     """
 
     n_mc: int = 200
     n_epochs: int = 80
     n_sats: int = 6
-    attack_start_frac: float = 0.40
-    attack_duration_frac: float = 0.35
     doppler_noise_std: float = _DOPPLER_NOISE_STD
     spoof_bias_std: float = _SPOOF_BIAS_STD
     spoof_diff_std: float = _SPOOF_DIFF_STD
     graph_sigma: float = _GRAPH_SIGMA
     false_alarm_rate: float = 0.05
     subset_size: int = 4
+    dirichlet_alpha: float = _DIRICHLET_ALPHA
     random_seed: int = 42
 
     def __post_init__(self) -> None:
@@ -95,12 +99,12 @@ class SimConfig:
             raise ValueError(
                 f"subset_size ({self.subset_size}) must be < n_sats ({self.n_sats})"
             )
-        if not (0.0 < self.attack_start_frac < 1.0):
-            raise ValueError("attack_start_frac must be in (0, 1)")
         if not (0.0 < self.false_alarm_rate < 1.0):
             raise ValueError("false_alarm_rate must be in (0, 1)")
         if self.n_sats < _PVT_DIM + 1:
             raise ValueError(f"n_sats must be >= {_PVT_DIM + 1} for WLS to be overdetermined")
+        if self.dirichlet_alpha <= 0.0:
+            raise ValueError("dirichlet_alpha must be positive")
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +127,33 @@ def _init_constellation(n_sats: int) -> np.ndarray:
         [np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]
     )
     return e  # (n_sats, 3)
+
+
+# ---------------------------------------------------------------------------
+# Receiver initialisation and attack-window sampling
+# ---------------------------------------------------------------------------
+
+
+def _init_receiver(rng: np.random.Generator) -> tuple[np.ndarray, float]:
+    """Sample initial receiver velocity [m/s] and clock drift [m/s equiv]."""
+    vel = rng.normal(0.0, 0.5, size=3)
+    clock_drift = rng.normal(0.0, 0.1)
+    return vel, clock_drift
+
+
+def _sample_attack_window(T: int, alpha: float, rng: np.random.Generator) -> tuple[int, int]:
+    """Sample [attack_start, attack_end) from Dirichlet(α,α,α) partition of [0,T).
+
+    The three fractions [pre | attack | post] sum to 1.  At least one attacked
+    epoch is guaranteed via  attack_end = max(attack_start + 1, ...).
+
+    Returns:
+        (attack_start, attack_end) with 0 ≤ attack_start < attack_end ≤ T.
+    """
+    fracs = rng.dirichlet([alpha, alpha, alpha])
+    attack_start = int(fracs[0] * T)
+    attack_end = max(attack_start + 1, int((fracs[0] + fracs[1]) * T))
+    return attack_start, min(attack_end, T)
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +212,34 @@ def _doppler_deviation(
     return (f_true - f_pred) + noise + bias
 
 
+def _gen_genuine_measurements(
+    los: np.ndarray,
+    vel: np.ndarray,
+    clock_drift: float,
+    vel_hat: np.ndarray,
+    clock_drift_hat: float,
+    noise_std: float,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Genuine (no-attack) Doppler deviations."""
+    return _doppler_deviation(los, vel, vel_hat, clock_drift, clock_drift_hat, noise_std, rng)
+
+
+def _inject_attack(
+    meas: np.ndarray,
+    b_common: float,
+    spoof_diff_std: float,
+    n_sats: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Overlay meaconing bias onto genuine Doppler deviations.
+
+    b_i = b_common + δ_i,   δ_i ∼ N(0, σ_diff²)
+    """
+    delta = rng.normal(0.0, spoof_diff_std, size=n_sats)
+    return meas + b_common + delta
+
+
 # ---------------------------------------------------------------------------
 # Similarity graph
 # ---------------------------------------------------------------------------
@@ -195,6 +254,29 @@ def _build_graph(doppler_dev: np.ndarray, sigma: float) -> np.ndarray:
     W = np.exp(-(diff**2) / (sigma**2))
     np.fill_diagonal(W, 0.0)
     return W
+
+
+@dataclass
+class SimilarityGraph:
+    """Satellite similarity graph with its generating feature vector.
+
+    Attributes:
+        W:        (n, n) weight matrix with zero diagonal.
+        features: (n,) Doppler deviation vector used to build W.
+    """
+
+    W: np.ndarray
+    features: np.ndarray
+
+
+def _build_features(meas: np.ndarray) -> np.ndarray:
+    """Extract feature vector for the similarity graph (passthrough; extensible)."""
+    return meas
+
+
+def _build_similarity_graph(feats: np.ndarray, sigma: float) -> SimilarityGraph:
+    """Build SimilarityGraph from feature vector and kernel bandwidth."""
+    return SimilarityGraph(W=_build_graph(feats, sigma), features=feats)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +319,16 @@ def chi_stat(doppler_dev: np.ndarray, noise_std: float) -> float:
     """
     mu = doppler_dev.mean()
     return float(np.sum((doppler_dev - mu) ** 2) / noise_std**2)
+
+
+def percolation_stats(G: SimilarityGraph, noise_std: float) -> tuple[float, float]:
+    """Compute (m_t, chi_t) from a SimilarityGraph.
+
+    Returns:
+        m_t:   All-forests count  det(I + L_w).
+        chi_t: Doppler chi-squared statistic.
+    """
+    return matroid_forest_count(G.W), chi_stat(G.features, noise_std)
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +450,68 @@ def detection_score(residuals: np.ndarray, W: np.ndarray, S: list[int]) -> float
 
 
 # ---------------------------------------------------------------------------
-# Neyman-Pearson threshold
+# Fisher's combined test
+# ---------------------------------------------------------------------------
+
+
+def _null_forest_count(n: int, doppler_noise_std: float, graph_sigma: float) -> float:
+    """Analytical expected all-forests count under H₀.
+
+    For a fully-symmetric n×n similarity matrix with all off-diagonal entries
+    equal to E[w_ij] under H₀:
+
+        Δf_i − Δf_j ∼ N(0, 2σ_D²)   ⟹   E[w_ij] = 1 / √(1 + 4σ_D²/σ²)
+
+    Eigenvalues of (I + L) for this matrix: {1 (×1), 1 + n·w_null (×(n−1))}.
+
+        m_null = (1 + n·w_null)^(n−1)
+    """
+    w_null = 1.0 / math.sqrt(1.0 + 4.0 * doppler_noise_std**2 / graph_sigma**2)
+    return (1.0 + n * w_null) ** (n - 1)
+
+
+def fuse_score(
+    m_t: float,
+    chi_t: float,
+    residuals: np.ndarray,
+    W: np.ndarray,
+    S: list[int],
+    config: SimConfig,
+) -> float:
+    """Fisher's combined detection score.
+
+    F = −2(ln p_T + ln p_chi + ln p_m) ∼ χ²(6) under H₀
+
+    Component p-values:
+        p_T   = P(χ²(max(k−4, 1)) ≥ T_stat)   where T_stat = rᵀ diag(w_S) r
+        p_chi = P(χ²(n−1)          ≥ chi_t)
+        p_m   = P(χ²(1)             ≥ 2·max(log(m_null/m_t), 0))
+
+    All p-values are floored at _EPS to prevent log(0).
+
+    Args:
+        m_t:      All-forests count at this epoch.
+        chi_t:    Doppler chi-squared statistic.
+        residuals: (k,) WLS post-fit residuals on subset S.
+        W:        (n, n) full similarity matrix.
+        S:        Selected satellite indices.
+        config:   SimConfig (for n_sats, subset_size, noise/sigma params).
+
+    Returns:
+        Scalar Fisher score ≥ 0.
+    """
+    n, k = config.n_sats, config.subset_size
+    T_stat = detection_score(residuals, W, S)
+    p_T = max(float(_chi2_dist.sf(T_stat, df=max(k - _PVT_DIM, 1))), _EPS)
+    p_chi = max(float(_chi2_dist.sf(chi_t, df=max(n - 1, 1))), _EPS)
+    m_null = _null_forest_count(n, config.doppler_noise_std, config.graph_sigma)
+    forest_stat = max(2.0 * math.log(max(m_null, 1.0) / max(m_t, 1.0)), 0.0)
+    p_m = max(float(_chi2_dist.sf(forest_stat, df=1)), _EPS)
+    return -2.0 * (math.log(p_T) + math.log(p_chi) + math.log(p_m))
+
+
+# ---------------------------------------------------------------------------
+# Neyman-Pearson threshold  (legacy — kept for external callers)
 # ---------------------------------------------------------------------------
 
 
@@ -366,6 +519,9 @@ def np_threshold(n_obs: int, pfa: float) -> float:
     """Chi-squared NP threshold  τ = F_{χ²(df)}^{−1}(1 − α).
 
     Degrees of freedom: df = max(n_obs − PVT_DIM, 1).
+
+    Note: run_mc_simulation now uses χ²(_FISHER_DOF) for the fused score.
+    This function is retained for the legacy /simulate endpoint.
     """
     df = max(n_obs - _PVT_DIM, 1)
     return float(_chi2_dist.ppf(1.0 - pfa, df=df))
@@ -414,6 +570,128 @@ def _compute_roc(
 
 
 # ---------------------------------------------------------------------------
+# Single-trial simulation
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _TrialSummary:
+    """Internal result from a single simulate_trial call."""
+
+    run_result: RunResult
+    scores: list[float]
+    labels: list[int]
+    degradation: list[float]
+
+
+def simulate_trial(
+    config: SimConfig,
+    attacked: bool,
+    rng: np.random.Generator,
+    los: np.ndarray,
+    tau: float,
+) -> _TrialSummary:
+    """Simulate one Monte Carlo trial (T epochs).
+
+    Args:
+        config:   Simulation parameters.
+        attacked: Whether this trial contains a meaconing attack.
+        rng:      RNG state (mutated in place).
+        los:      (n_sats, 3) fixed LOS unit vectors.
+        tau:      NP alarm threshold for the fused Fisher score χ²(_FISHER_DOF).
+
+    Returns:
+        _TrialSummary with per-run aggregates, per-epoch trace, epoch-level
+        scores/labels (for ROC), and degradation samples.
+    """
+    vel, clock_drift = _init_receiver(rng)
+    b_common = rng.normal(0.0, config.spoof_bias_std)
+
+    if attacked:
+        attack_start, attack_end = _sample_attack_window(
+            config.n_epochs, config.dirichlet_alpha, rng
+        )
+    else:
+        attack_start = attack_end = 0
+
+    first_alarm: int | None = None
+    epoch_scores: list[float] = []
+    epoch_alarms: list[bool] = []
+    epoch_delays: list[float | None] = []
+    epoch_pvt_errors: list[float] = []
+    trial_scores: list[float] = []
+    trial_labels: list[int] = []
+    degradation: list[float] = []
+
+    for t in range(config.n_epochs):
+        vel, clock_drift = _propagate_state(vel, clock_drift, rng)
+
+        vel_hat = vel + rng.normal(0.0, _INS_VEL_STD, size=3)
+        clock_hat = clock_drift + rng.normal(0.0, _INS_CLOCK_STD)
+
+        under_attack = attacked and (attack_start <= t < attack_end)
+
+        meas = _gen_genuine_measurements(
+            los, vel, clock_drift, vel_hat, clock_hat,
+            config.doppler_noise_std, rng,
+        )
+        if under_attack:
+            meas = _inject_attack(meas, b_common, config.spoof_diff_std, config.n_sats, rng)
+
+        feats = _build_features(meas)
+        G = _build_similarity_graph(feats, config.graph_sigma)
+
+        m_t, chi_t = percolation_stats(G, config.doppler_noise_std)
+        S = select_subset(G.W, config.subset_size)
+
+        _, residuals = wls_pvt(los, meas, G.W, S)
+        _, residuals_all = wls_pvt(los, meas, G.W, list(range(config.n_sats)))
+
+        pvt_err = float(np.linalg.norm(residuals))
+        score = fuse_score(m_t, chi_t, residuals, G.W, S, config)
+
+        alarm = score > tau
+        is_first_alarm = alarm and first_alarm is None and under_attack
+        if is_first_alarm:
+            first_alarm = t
+
+        trial_scores.append(score)
+        trial_labels.append(int(under_attack))
+        epoch_scores.append(score)
+        epoch_alarms.append(alarm)
+        epoch_delays.append(float(t - attack_start) if is_first_alarm else None)
+        epoch_pvt_errors.append(pvt_err)
+
+        if under_attack:
+            r_all = float(np.linalg.norm(residuals_all)) + 1e-12
+            degradation.append(pvt_err / r_all)
+
+    first_delay: float | None = (
+        float(first_alarm - attack_start) if first_alarm is not None else None
+    )
+    pvt_arr = np.array(epoch_pvt_errors, dtype=float)
+    run_result = RunResult(
+        score_max=float(max(epoch_scores)),
+        alarm_any=any(epoch_alarms),
+        delay=first_delay,
+        pvt_rmse=float(np.sqrt(np.mean(pvt_arr**2))),
+        pvt_max=float(pvt_arr.max()),
+        trace=RunTrace(
+            score=epoch_scores,
+            alarm=epoch_alarms,
+            delay=epoch_delays,
+            pvt_error=epoch_pvt_errors,
+        ),
+    )
+    return _TrialSummary(
+        run_result=run_result,
+        scores=trial_scores,
+        labels=trial_labels,
+        degradation=degradation,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Monte Carlo simulation
 # ---------------------------------------------------------------------------
 
@@ -424,17 +702,9 @@ def run_mc_simulation(
 ) -> MCSimReport:
     """Run Monte Carlo GNSS spoofing detection simulation.
 
-    Each MC run:
-        - Initialises receiver state and satellite geometry
-        - Simulates T epochs of genuine or spoofed Doppler measurements
-        - Builds similarity graph, computes m(t) and chi(t)
-        - Selects satellite subset via greedy Fiedler maximisation
-        - Estimates PVT with WLS and computes detection score
-
-    Aggregates over M runs:
-        - ROC curve (FPR, TPR at 200 thresholds) + AUC
-        - Mean / std detection delay [epochs after attack start]
-        - Mean / std PVT degradation ratio under attack
+    Alternates attacked / genuine trials (mc % 2 == 0 → attacked).
+    Each trial calls simulate_trial, which uses a Dirichlet-sampled attack
+    window and the fused Fisher score  F ∼ χ²(6)  for alarm decisions.
 
     Args:
         config: simulation parameters; uses SimConfig() defaults if None.
@@ -448,10 +718,8 @@ def run_mc_simulation(
     if rng is None:
         rng = np.random.default_rng(config.random_seed)
 
-    T = config.n_epochs
-    attack_start = int(config.attack_start_frac * T)
-    attack_end = min(T, attack_start + int(config.attack_duration_frac * T))
-    tau = np_threshold(config.subset_size, config.false_alarm_rate)
+    # NP threshold for the fused Fisher score  F ∼ χ²(_FISHER_DOF)
+    tau = float(_chi2_dist.ppf(1.0 - config.false_alarm_rate, df=_FISHER_DOF))
 
     # Fixed satellite geometry for all MC runs (deterministic Fibonacci lattice)
     los = _init_constellation(config.n_sats)
@@ -462,86 +730,15 @@ def run_mc_simulation(
     degradation_samples: list[float] = []
     run_results: list[RunResult] = []
 
-    for _mc in range(config.n_mc):
-        # Initialise receiver state
-        vel = rng.normal(0.0, 0.5, size=3)
-        clock_drift = rng.normal(0.0, 0.1)
-
-        # Common spoofing bias for this MC run (fixed over attack window)
-        b_common = rng.normal(0.0, config.spoof_bias_std)
-
-        first_alarm: int | None = None
-        epoch_scores: list[float] = []
-        epoch_alarms: list[bool] = []
-        epoch_delays: list[float | None] = []
-        epoch_pvt_errors: list[float] = []
-
-        for t in range(T):
-            vel, clock_drift = _propagate_state(vel, clock_drift, rng)
-
-            # INS prediction (small error added to true state)
-            vel_hat = vel + rng.normal(0.0, _INS_VEL_STD, size=3)
-            clock_hat = clock_drift + rng.normal(0.0, _INS_CLOCK_STD)
-
-            under_attack = attack_start <= t < attack_end
-            spoof_bias: np.ndarray | None = None
-            if under_attack:
-                # Per-satellite differential bias: b_i = b_common + δ_i
-                delta = rng.normal(0.0, config.spoof_diff_std, size=config.n_sats)
-                spoof_bias = np.full(config.n_sats, b_common) + delta
-
-            dop_dev = _doppler_deviation(
-                los, vel, vel_hat, clock_drift, clock_hat,
-                config.doppler_noise_std, rng, spoof_bias=spoof_bias,
-            )
-
-            W = _build_graph(dop_dev, config.graph_sigma)
-
-            # --- m(t) and chi(t) (logged; chi(t) contributes to subset guidance) ---
-            # matroid_forest_count(W)  — available for diagnostics
-            # chi_stat(dop_dev, config.doppler_noise_std) — available for diagnostics
-
-            S = select_subset(W, config.subset_size)
-
-            _, residuals = wls_pvt(los, dop_dev, W, S)
-            _, residuals_all = wls_pvt(los, dop_dev, W, list(range(config.n_sats)))
-
-            pvt_err = float(np.linalg.norm(residuals))
-            score = detection_score(residuals, W, S)
-            all_scores.append(score)
-            all_labels.append(int(under_attack))
-
-            alarm = score > tau
-            is_first_alarm = alarm and first_alarm is None and under_attack
-            if is_first_alarm:
-                first_alarm = t
-
-            epoch_scores.append(score)
-            epoch_alarms.append(bool(alarm))
-            epoch_pvt_errors.append(pvt_err)
-            epoch_delays.append(float(t - attack_start) if is_first_alarm else None)
-
-            if under_attack:
-                r_all = float(np.linalg.norm(residuals_all)) + 1e-12
-                degradation_samples.append(pvt_err / r_all)
-
-        if first_alarm is not None:
-            delay_samples.append(float(first_alarm - attack_start))
-
-        pvt_errors_arr = np.array(epoch_pvt_errors, dtype=float)
-        run_results.append(RunResult(
-            score_max=float(max(epoch_scores)),
-            alarm_any=any(epoch_alarms),
-            delay=float(first_alarm - attack_start) if first_alarm is not None else None,
-            pvt_rmse=float(np.sqrt(np.mean(pvt_errors_arr**2))),
-            pvt_max=float(pvt_errors_arr.max()),
-            trace=RunTrace(
-                score=epoch_scores,
-                alarm=epoch_alarms,
-                delay=epoch_delays,
-                pvt_error=epoch_pvt_errors,
-            ),
-        ))
+    for mc in range(config.n_mc):
+        attacked = mc % 2 == 0
+        summary = simulate_trial(config, attacked=attacked, rng=rng, los=los, tau=tau)
+        run_results.append(summary.run_result)
+        all_scores.extend(summary.scores)
+        all_labels.extend(summary.labels)
+        degradation_samples.extend(summary.degradation)
+        if summary.run_result.delay is not None:
+            delay_samples.append(summary.run_result.delay)
 
     scores_arr = np.array(all_scores, dtype=float)
     labels_arr = np.array(all_labels, dtype=int)

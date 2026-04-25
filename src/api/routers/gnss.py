@@ -263,11 +263,8 @@ class SpooferSimRequest(BaseModel):
     n_mc: int = Field(default=200, ge=1, le=_N_MC_MAX, description="Monte Carlo runs")
     n_epochs: int = Field(default=80, ge=20, le=500, description="Time steps per run")
     n_sats: int = Field(default=6, ge=5, le=20, description="Number of visible satellites")
-    attack_start_frac: float = Field(
-        default=0.40, gt=0.0, lt=1.0, description="Attack start as fraction of n_epochs"
-    )
-    attack_duration_frac: float = Field(
-        default=0.35, gt=0.0, lt=1.0, description="Attack duration as fraction of n_epochs"
+    dirichlet_alpha: float = Field(
+        default=2.0, gt=0.0, description="Symmetric Dirichlet concentration for attack window"
     )
     doppler_noise_std: float = Field(
         default=0.30, gt=0.0, description="Genuine Doppler noise 1-σ [Hz]"
@@ -312,8 +309,7 @@ def spoof_sim(req: SpooferSimRequest) -> MCSimReport:
             n_mc=req.n_mc,
             n_epochs=req.n_epochs,
             n_sats=req.n_sats,
-            attack_start_frac=req.attack_start_frac,
-            attack_duration_frac=req.attack_duration_frac,
+            dirichlet_alpha=req.dirichlet_alpha,
             doppler_noise_std=req.doppler_noise_std,
             spoof_bias_std=req.spoof_bias_std,
             spoof_diff_std=req.spoof_diff_std,
