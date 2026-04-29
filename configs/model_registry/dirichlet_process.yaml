@@ -1,0 +1,49 @@
+id: dirichlet_process
+name: Dirichlet Process Mixture Model
+category: bayesian_nonparametrics
+tags: [bayesian_nonparametrics, clustering, infinite_mixture, mcmc, crp, dp]
+problem_type: Bayesian nonparametric clustering with an unbounded number of components
+objective: Infer cluster assignments and component parameters without fixing K a priori
+state_variables:
+  - "z_i: cluster assignment for observation i ∈ {1, 2, …} (unbounded)"
+  - "θ_k: parameters for cluster k (e.g. mean, covariance)"
+  - "G: discrete random probability measure over Θ"
+observables:
+  - "x_{1:n}: observed data points ∈ ℝ^d"
+parameters:
+  - "α: concentration parameter (α > 0); controls number of clusters"
+  - "G_0: base distribution (prior over component parameters)"
+  - "F(·|θ): likelihood kernel (e.g. Gaussian with parameters θ)"
+constraints:
+  - "α > 0"
+  - "G ~ DP(α, G_0)"
+uncertainty:
+  cluster_count: "K* ~ O(α log n) expected occupied tables"
+  assignments: "P(z_i = k | z_{-i}, α) via Chinese Restaurant Process"
+equations:
+  - "DP: G ~ DP(α, G_0) — almost surely discrete random measure"
+  - "Stick-breaking: G = ∑_{k=1}^∞ π_k δ_{θ_k}, π_k = β_k ∏_{j<k}(1-β_j), β_k ~ Beta(1,α)"
+  - "CRP prior: P(z_i=k | z_{-i}) = n_{-i,k}/(n-1+α) for existing k; α/(n-1+α) for new"
+  - "Posterior predictive: p(x_new | x_{1:n}) = ∫ p(x_new|θ) dG_n(θ)"
+  - "Expected clusters: E[K*] ≈ α ln(1 + n/α)"
+priors:
+  alpha: "Gamma(1, 1) — weakly informative"
+  G_0: "Conjugate prior for F (e.g. Normal-Inverse-Wishart for Gaussian likelihood)"
+loss_function: "Marginal log-likelihood log p(x_{1:n} | α, G_0) (integrated over G)"
+solver: Collapsed Gibbs sampling (Neal Algorithm 3/8) or variational inference
+outputs:
+  - "z_{1:n}: posterior cluster assignments"
+  - "K*: inferred number of occupied clusters"
+  - "θ_k: posterior cluster parameters"
+  - "α̂: estimated concentration (if learned)"
+assumptions:
+  - "Exchangeable observations (de Finetti's theorem applies)"
+  - "Component parameters θ_k are i.i.d. from G_0"
+  - "Infinite mixture — occupied clusters grow as O(α log n)"
+evidence_needed:
+  - "Observed data x_{1:n}"
+  - "Choice of likelihood kernel F and conjugate base G_0"
+  - "Prior on concentration α"
+references:
+  - "Ferguson, T.S. (1973). A Bayesian analysis of some nonparametric problems. Ann. Stat., 1(2), 209-230."
+  - "Neal, R.M. (2000). Markov chain sampling methods for Dirichlet process mixture models. J. Computational and Graphical Statistics, 9(2), 249-265."

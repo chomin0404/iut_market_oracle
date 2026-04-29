@@ -1,0 +1,54 @@
+id: black_scholes
+name: Black-Scholes Option Pricing Model
+category: financial_derivatives
+tags: [options, pricing, pde, stochastic_calculus, finance, lognormal]
+problem_type: Continuous-time option pricing via partial differential equation
+objective: Find the no-arbitrage price of a European option on a GBM asset
+state_variables:
+  - "S_t: underlying asset price ∈ ℝ_{>0}"
+  - "V(S,t): option value as function of price and time"
+observables:
+  - "S_t: market price of the underlying"
+  - "C_market: observed market option price (for calibration)"
+parameters:
+  - "μ: asset drift rate (annual)"
+  - "σ: asset volatility (annual, constant)"
+  - "r: risk-free interest rate (annual)"
+  - "K: option strike price"
+  - "T: time to expiration (years)"
+constraints:
+  - "σ > 0"
+  - "S_t > 0 for all t"
+  - "0 ≤ t ≤ T"
+uncertainty:
+  asset_dynamics: "dS_t = μ S_t dt + σ S_t dW_t (geometric Brownian motion)"
+equations:
+  - "GBM: dS_t = μ S_t dt + σ S_t dW_t"
+  - "Black-Scholes PDE: ∂V/∂t + (1/2)σ²S²∂²V/∂S² + rS∂V/∂S - rV = 0"
+  - "Call price: C = S_0 N(d₁) - K e^{-rT} N(d₂)"
+  - "d₁ = [ln(S_0/K) + (r + σ²/2)T] / (σ√T)"
+  - "d₂ = d₁ - σ√T"
+  - "Put price: P = K e^{-rT} N(-d₂) - S_0 N(-d₁)"
+priors:
+  sigma: "log-normal or half-normal over implied vol surface"
+loss_function: "Squared implied-vol error: (σ_implied - σ_model)²"
+solver: Analytical closed-form; finite-difference PDE for American variants
+outputs:
+  - "C: European call option price"
+  - "P: European put option price"
+  - "Δ (delta): ∂V/∂S — hedge ratio"
+  - "Γ (gamma): ∂²V/∂S² — convexity"
+  - "Θ (theta): ∂V/∂t — time decay"
+  - "ν (vega): ∂V/∂σ — vol sensitivity"
+assumptions:
+  - "Constant volatility σ (no vol smile)"
+  - "No dividends on the underlying"
+  - "Continuous trading and no transaction costs"
+  - "Risk-free rate r is constant"
+evidence_needed:
+  - "Current underlying price S_0"
+  - "Historical or implied volatility estimate σ"
+  - "Risk-free rate r (e.g. from OIS or government bonds)"
+references:
+  - "Black, F. & Scholes, M. (1973). The pricing of options and corporate liabilities. J. Political Economy, 81(3), 637-654."
+  - "Merton, R.C. (1973). Theory of rational option pricing. Bell J. Economics, 4(1), 141-183."

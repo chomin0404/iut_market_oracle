@@ -1,0 +1,54 @@
+id: sir_model
+name: SIR Epidemiological Model
+category: dynamical_systems
+tags: [epidemiology, ode, compartmental, infectious_disease, public_health, r0]
+problem_type: Compartmental ODE model of infectious disease spread
+objective: Model and forecast the dynamics of susceptible, infected, and recovered populations
+state_variables:
+  - "S(t): number of susceptible individuals"
+  - "I(t): number of infectious individuals"
+  - "R(t): number of recovered (immune) individuals"
+  - "N = S + I + R: total population (constant)"
+observables:
+  - "I(t): observed infection count (often reported cases, under-counted)"
+  - "R(t): observed recovery/removal count"
+parameters:
+  - "β: transmission rate (contacts × transmission probability per unit time)"
+  - "γ: recovery rate (1/γ = mean infectious period)"
+constraints:
+  - "S(t), I(t), R(t) ≥ 0 for all t"
+  - "S(t) + I(t) + R(t) = N (conservation)"
+  - "β > 0, γ > 0"
+uncertainty:
+  observation: "Reported cases are Poisson or negative-binomial with under-reporting"
+  initial_conditions: "I(0) often uncertain"
+equations:
+  - "dS/dt = -β S I / N"
+  - "dI/dt = β S I / N - γ I"
+  - "dR/dt = γ I"
+  - "Basic reproduction number: R_0 = β/γ"
+  - "Epidemic threshold: outbreak grows iff R_0 S(0)/N > 1"
+  - "Final epidemic size: R(∞)/N satisfies 1 - R(∞)/N = exp(-R_0 R(∞)/N)"
+priors:
+  beta: "Gamma(2, 1) — weakly informative"
+  gamma: "Gamma(2, 1) — mean recovery period ~1 week for gamma=1/7"
+  I_0: "Gamma(1, 10) — small initial infected count"
+loss_function: "Negative log-likelihood of observed case counts given ODE trajectory"
+solver: Runge-Kutta 4/5 ODE integration; Bayesian calibration via MCMC or NUTS
+outputs:
+  - "S(t), I(t), R(t): population compartment trajectories"
+  - "R_0: basic reproduction number"
+  - "Peak infection time and magnitude"
+  - "Final epidemic size (herd immunity threshold)"
+assumptions:
+  - "Homogeneous mixing (mass action incidence)"
+  - "Constant population N (no births, deaths, migration)"
+  - "Immunity upon recovery (no reinfection)"
+  - "Deterministic dynamics (stochastic extensions: Gillespie algorithm)"
+evidence_needed:
+  - "Total population N"
+  - "Time series of reported cases or hospitalisations"
+  - "Estimates of infectious period (literature or clinical data)"
+references:
+  - "Kermack, W.O. & McKendrick, A.G. (1927). A contribution to the mathematical theory of epidemics. Proc. Royal Soc. A, 115(772), 700-721."
+  - "Anderson, R.M. & May, R.M. (1991). Infectious Diseases of Humans. Oxford University Press."

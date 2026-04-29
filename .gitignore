@@ -30,6 +30,10 @@ artifacts/
 # Test caches
 .pytest_cache/
 
+# Separate modeling_api project (root-level, separate venv — not part of this package)
+# Keep excluded to prevent import namespace collision with src/modeling_api/
+modeling_api/
+
 # Local working outputs
 output/
 

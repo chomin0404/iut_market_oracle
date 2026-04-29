@@ -1,0 +1,48 @@
+id: kalman_filter
+name: Kalman Filter
+category: state_estimation
+tags: [filtering, bayesian, sequential, signal_processing, linear]
+problem_type: Sequential Bayesian state estimation under linear Gaussian dynamics
+objective: Minimize mean squared error of the state estimate E[||x_t - x̂_t||²]
+state_variables:
+  - "x_t: hidden state vector ∈ ℝ^n"
+  - "P_t: error covariance matrix ∈ ℝ^{n×n}"
+observables:
+  - "z_t: measurement vector ∈ ℝ^m"
+parameters:
+  - "F: state transition matrix ∈ ℝ^{n×n}"
+  - "H: observation matrix ∈ ℝ^{m×n}"
+  - "Q: process noise covariance ∈ ℝ^{n×n}"
+  - "R: measurement noise covariance ∈ ℝ^{m×m}"
+constraints:
+  - "Q ≽ 0 (positive semi-definite)"
+  - "R ≻ 0 (positive definite)"
+  - "P_t ≽ 0 at all t"
+uncertainty:
+  process_noise: "w_t ~ N(0, Q)"
+  measurement_noise: "v_t ~ N(0, R)"
+equations:
+  - "Predict: x̂_{t|t-1} = F x̂_{t-1|t-1}"
+  - "Predict: P_{t|t-1} = F P_{t-1|t-1} F^T + Q"
+  - "Kalman gain: K_t = P_{t|t-1} H^T (H P_{t|t-1} H^T + R)^{-1}"
+  - "Update: x̂_{t|t} = x̂_{t|t-1} + K_t (z_t - H x̂_{t|t-1})"
+  - "Update: P_{t|t} = (I - K_t H) P_{t|t-1}"
+priors:
+  x_0: "N(μ_0, P_0)"
+loss_function: "tr(P_{t|t}) = E[||x_t - x̂_t||²]"
+solver: Recursive closed-form (Kalman equations)
+outputs:
+  - "x̂_{t|t}: filtered state estimate"
+  - "P_{t|t}: posterior covariance"
+  - "K_t: Kalman gain sequence"
+assumptions:
+  - "Linear state transition: x_t = F x_{t-1} + w_t"
+  - "Linear observation model: z_t = H x_t + v_t"
+  - "Gaussian, white, mutually independent noise sequences"
+evidence_needed:
+  - "Initial state mean μ_0 and covariance P_0"
+  - "Process noise covariance Q (from domain knowledge or EM algorithm)"
+  - "Measurement noise covariance R (from sensor specifications)"
+references:
+  - "Kalman, R.E. (1960). A new approach to linear filtering and prediction problems. ASME J. Basic Engineering, 82(1), 35-45."
+  - "Welch, G. & Bishop, G. (2006). An Introduction to the Kalman Filter. UNC Chapel Hill TR 95-041."

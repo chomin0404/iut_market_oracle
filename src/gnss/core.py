@@ -11,14 +11,15 @@ Key components:
     SpoofingAttacker       — 5 attack models (4 TESLA + 1 key_compromise)
     run_simulation()       — end-to-end detection simulation → SimReport
 """
+
 from __future__ import annotations
 
 import hashlib
 import hmac
 import os
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 import numpy as np
 from cryptography.exceptions import InvalidSignature
@@ -37,11 +38,11 @@ from gnss.pqc import QUANTUM_FIDELITY_THRESHOLD, QuantumFidelityDetector, RLWEAu
 # ---------------------------------------------------------------------------
 
 NUM_SVIDS: int = 4
-KEY_SIZE_BITS: int = 128          # TESLA key size [bits]
-MAC_SIZE_BITS: int = 40           # MAC tag size [bits]
-DISCLOSURE_DELAY: int = 2         # key disclosure delay [subframes]
-SUBFRAME_DURATION: int = 30       # subframe length [seconds]
-EPH_SIZE: int = 32                # dummy ephemeris size [bytes]
+KEY_SIZE_BITS: int = 128  # TESLA key size [bits]
+MAC_SIZE_BITS: int = 40  # MAC tag size [bits]
+DISCLOSURE_DELAY: int = 2  # key disclosure delay [subframes]
+SUBFRAME_DURATION: int = 30  # subframe length [seconds]
+EPH_SIZE: int = 32  # dummy ephemeris size [bytes]
 DEFAULT_SEED: int = 42
 
 
@@ -56,9 +57,9 @@ class NavMessage:
 
     svid: int
     epoch: int
-    gst: int                          # Galileo System Time [s]
-    eph_data: bytes                   # ephemeris (EPH_SIZE bytes)
-    tesla_key: bytes | None           # disclosed TESLA key K_{epoch-delay}
+    gst: int  # Galileo System Time [s]
+    eph_data: bytes  # ephemeris (EPH_SIZE bytes)
+    tesla_key: bytes | None  # disclosed TESLA key K_{epoch-delay}
     mac_tag: bytes = field(default_factory=lambda: bytes(MAC_SIZE_BITS // 8))
     is_spoofed: bool = False
 
@@ -71,14 +72,14 @@ class NavMessage:
 class VerificationResult:
     """Per-message OSNMA verification outcome."""
 
-    epoch: int                 # epoch of the buffered message being verified
-    disclosure_epoch: int      # epoch at which the key was disclosed
+    epoch: int  # epoch of the buffered message being verified
+    disclosure_epoch: int  # epoch at which the key was disclosed
     svid: int
-    key_valid: bool            # TESLA key lies on authenticated chain
-    mac_valid: bool            # MAC tag matches recomputed value
-    receipt_safe: bool         # message received before key was disclosed
-    is_spoofed: bool           # ground-truth label
-    detected: bool             # any check failed (TESLA or quantum fidelity)
+    key_valid: bool  # TESLA key lies on authenticated chain
+    mac_valid: bool  # MAC tag matches recomputed value
+    receipt_safe: bool  # message received before key was disclosed
+    is_spoofed: bool  # ground-truth label
+    detected: bool  # any check failed (TESLA or quantum fidelity)
     quantum_anomaly: bool = False  # quantum fidelity below threshold (eph mismatch)
 
 
@@ -180,9 +181,7 @@ class OSNMAAuthority:
         r, s = decode_dss_signature(der)
         return r.to_bytes(32, "big") + s.to_bytes(32, "big")
 
-    def verify_root_sig(
-        self, kroot: bytes, epoch: int, params: dict[str, int], sig: bytes
-    ) -> bool:
+    def verify_root_sig(self, kroot: bytes, epoch: int, params: dict[str, int], sig: bytes) -> bool:
         msg = self._build_signed_msg(kroot, epoch, params)
         r = int.from_bytes(sig[:32], "big")
         s = int.from_bytes(sig[32:], "big")
@@ -284,18 +283,14 @@ class OSNMAReceiver:
         # 3. MAC verification
         mac_valid = False
         if key_valid and buffered is not None:
-            expected = hmac.new(
-                msg.tesla_key, buffered.auth_payload(), hashlib.sha256
-            ).digest()[: MAC_SIZE_BITS // 8]
+            expected = hmac.new(msg.tesla_key, buffered.auth_payload(), hashlib.sha256).digest()[
+                : MAC_SIZE_BITS // 8
+            ]
             mac_valid = buffered.mac_tag == expected
 
         # 4. Quantum fidelity check (when eph_oracle is configured)
         quantum_anomaly = False
-        if (
-            self._fidelity is not None
-            and self._eph_oracle is not None
-            and buffered is not None
-        ):
+        if self._fidelity is not None and self._eph_oracle is not None and buffered is not None:
             expected_eph = self._eph_oracle(msg.svid, disclosed_epoch)
             quantum_anomaly = self._fidelity.is_anomaly(buffered.eph_data, expected_eph)
 
@@ -317,9 +312,7 @@ class OSNMAReceiver:
             quantum_anomaly=quantum_anomaly,
         )
 
-    def flush_expired(
-        self, final_epoch: int
-    ) -> list[tuple[int, int, NavMessage, float]]:
+    def flush_expired(self, final_epoch: int) -> list[tuple[int, int, NavMessage, float]]:
         """Return unverified buffer entries whose key disclosure epoch <= final_epoch.
 
         Used after the main simulation loop to surface spoofed messages that were
@@ -347,9 +340,9 @@ class OSNMAReceiver:
             return False
         current = anchor_key
         for i in range(anchor_epoch - 1, epoch - 1, -1):
-            current = hashlib.sha256(
-                current + struct.pack("<I", i)
-            ).digest()[: TESLAKeyChain.KEY_BYTES]
+            current = hashlib.sha256(current + struct.pack("<I", i)).digest()[
+                : TESLAKeyChain.KEY_BYTES
+            ]
         return current == key
 
 
@@ -488,9 +481,18 @@ def _metrics(rows: list[dict]) -> dict:
     rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
     return dict(
-        total=len(rows), spoofed=len(spoofed), normal=len(normal),
-        tp=tp, fp=fp, fn=fn, tn=tn,
-        p_fa=p_fa, p_md=p_md, precision=prec, recall=rec, f1=f1,
+        total=len(rows),
+        spoofed=len(spoofed),
+        normal=len(normal),
+        tp=tp,
+        fp=fp,
+        fn=fn,
+        tn=tn,
+        p_fa=p_fa,
+        p_md=p_md,
+        precision=prec,
+        recall=rec,
+        f1=f1,
     )
 
 
@@ -582,9 +584,7 @@ def run_simulation(
                 and ep >= DISCLOSURE_DELAY + 2
                 and rng_kc.random() < attack_prob
             ):
-                fake_kc = attacker.key_compromise(
-                    tx.svid, ep, gst, chain, os.urandom(EPH_SIZE)
-                )
+                fake_kc = attacker.key_compromise(tx.svid, ep, gst, chain, os.urandom(EPH_SIZE))
                 # Overwrite the buffer entry so the fake eph is verified when K_ep is disclosed
                 rx._buf[(tx.svid, ep)] = (fake_kc, ep + 0.5)
                 attack_log[(tx.svid, ep)] = "key_compromise"
@@ -606,23 +606,29 @@ def run_simulation(
                 # Emit one row per attack epoch so each (svid, attack_epoch) dedup
                 # group can independently pick up a detected=True row.
                 if disc_at != "none":
-                    raw_rows.append({
-                        **row_base,
-                        "attack_type": disc_at,
-                        "attack_epoch": result.disclosure_epoch,
-                    })
+                    raw_rows.append(
+                        {
+                            **row_base,
+                            "attack_type": disc_at,
+                            "attack_epoch": result.disclosure_epoch,
+                        }
+                    )
                 if buf_at != "none":
-                    raw_rows.append({
-                        **row_base,
-                        "attack_type": buf_at,
-                        "attack_epoch": result.epoch,
-                    })
+                    raw_rows.append(
+                        {
+                            **row_base,
+                            "attack_type": buf_at,
+                            "attack_epoch": result.epoch,
+                        }
+                    )
                 if disc_at == "none" and buf_at == "none":
-                    raw_rows.append({
-                        **row_base,
-                        "attack_type": "none",
-                        "attack_epoch": result.epoch,
-                    })
+                    raw_rows.append(
+                        {
+                            **row_base,
+                            "attack_type": "none",
+                            "attack_epoch": result.epoch,
+                        }
+                    )
 
     # -----------------------------------------------------------------------
     # Fix 2: Flush boundary epochs whose key was never disclosed in the loop.
@@ -642,9 +648,9 @@ def run_simulation(
             continue
         key_disclose_time = float(disc_epoch)
         receipt_safe = recv_time < key_disclose_time - 0.1
-        expected_mac = hmac.new(
-            key, buffered_msg.auth_payload(), hashlib.sha256
-        ).digest()[: MAC_SIZE_BITS // 8]
+        expected_mac = hmac.new(key, buffered_msg.auth_payload(), hashlib.sha256).digest()[
+            : MAC_SIZE_BITS // 8
+        ]
         mac_valid = buffered_msg.mac_tag == expected_mac
         detected = not (mac_valid and receipt_safe)
 
@@ -680,8 +686,11 @@ def run_simulation(
 
     # Per-attack-type stats (including key_compromise as 5th type)
     atypes = [
-        "naive_replay", "modified_replay", "key_disclosure",
-        "late_injection", "key_compromise",
+        "naive_replay",
+        "modified_replay",
+        "key_disclosure",
+        "late_injection",
+        "key_compromise",
     ]
     by_type: dict[str, dict[str, int | float]] = {}
     for at in atypes:
@@ -689,21 +698,27 @@ def run_simulation(
         if not rows_at:
             continue
         det = sum(1 for r in rows_at if r["detected"])
-        by_type[at] = dict(total=len(rows_at), detected=det,
-                           p_detect=det / len(rows_at))
+        by_type[at] = dict(total=len(rows_at), detected=det, p_detect=det / len(rows_at))
 
     # quantum_detections: key_compromise rows caught exclusively by quantum layer
     # (TESLA checks all passed, only quantum_anomaly=True triggered detection)
     quantum_detections = sum(
-        1 for r in deduped
-        if r.get("attack_type") == "key_compromise" and r.get("detected")
+        1 for r in deduped if r.get("attack_type") == "key_compromise" and r.get("detected")
     )
 
     return SimReport(
-        total=m["total"], spoofed=m["spoofed"], normal=m["normal"],
-        tp=m["tp"], fp=m["fp"], fn=m["fn"], tn=m["tn"],
-        p_fa=m["p_fa"], p_md=m["p_md"],
-        precision=m["precision"], recall=m["recall"], f1=m["f1"],
+        total=m["total"],
+        spoofed=m["spoofed"],
+        normal=m["normal"],
+        tp=m["tp"],
+        fp=m["fp"],
+        fn=m["fn"],
+        tn=m["tn"],
+        p_fa=m["p_fa"],
+        p_md=m["p_md"],
+        precision=m["precision"],
+        recall=m["recall"],
+        f1=m["f1"],
         by_attack_type=by_type,
         quantum_detections=quantum_detections,
     )

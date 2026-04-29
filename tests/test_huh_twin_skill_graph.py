@@ -41,7 +41,6 @@ from __future__ import annotations
 import pytest
 
 from huh_twin.skill_graph import (
-    EXPECTED_PROMPT_ITEMS,
     SKILL_CLASSIFICATION,
     ClassifiedSkill,
     SkillBasis,
@@ -50,7 +49,6 @@ from huh_twin.skill_graph import (
     grouped_by_basis,
     prompt_items_missing_from_classification,
 )
-
 
 # ---------------------------------------------------------------------------
 # SkillBasis

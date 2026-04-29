@@ -5,6 +5,7 @@ POST /gnss/verify-key     — Verify a single TESLA key against a chain anchor
 POST /gnss/detect         — Stream NAV observations through the TESLA verifier
 POST /gnss/spoof-sim      — Monte Carlo signal-level spoofing detection (T1300)
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -34,10 +35,12 @@ router = APIRouter()
 
 
 class SimulateRequest(BaseModel):
-    num_epochs: int = Field(default=40, ge=10, le=500,
-                            description="Number of subframe epochs to simulate")
-    attack_prob: float = Field(default=0.25, ge=0.0, le=1.0,
-                               description="Per-epoch attack injection probability")
+    num_epochs: int = Field(
+        default=40, ge=10, le=500, description="Number of subframe epochs to simulate"
+    )
+    attack_prob: float = Field(
+        default=0.25, ge=0.0, le=1.0, description="Per-epoch attack injection probability"
+    )
     seed: int = Field(default=42, description="RNG seed for reproducibility")
 
 
@@ -87,8 +90,9 @@ class NavObservation(BaseModel):
     gst: int = Field(..., ge=0, description="Galileo System Time [s]")
     eph_data_hex: str = Field(..., description="Hex-encoded ephemeris data (32 bytes = 64 chars)")
     mac_tag_hex: str = Field(..., description="Hex-encoded MAC tag (5 bytes = 10 chars)")
-    tesla_key_hex: str | None = Field(default=None,
-                                      description="Disclosed TESLA key hex, if present")
+    tesla_key_hex: str | None = Field(
+        default=None, description="Disclosed TESLA key hex, if present"
+    )
     receive_time_epoch: float = Field(..., description="Actual receive time [epoch units]")
 
 
@@ -104,8 +108,9 @@ class DetectionResult(BaseModel):
 
 class DetectRequest(BaseModel):
     observations: list[NavObservation] = Field(..., min_length=1)
-    num_chain_epochs: int = Field(default=60, ge=10, le=1000,
-                                  description="Total chain length (must cover all epochs)")
+    num_chain_epochs: int = Field(
+        default=60, ge=10, le=1000, description="Total chain length (must cover all epochs)"
+    )
     seed: int = Field(default=42, description="Chain generation seed")
 
 
@@ -152,9 +157,7 @@ def simulate(req: SimulateRequest) -> SimulateResponse:
         precision=report.precision,
         recall=report.recall,
         f1=report.f1,
-        by_attack_type={
-            k: AttackTypeStat(**v) for k, v in report.by_attack_type.items()
-        },
+        by_attack_type={k: AttackTypeStat(**v) for k, v in report.by_attack_type.items()},
         quantum_detections=report.quantum_detections,
     )
 
@@ -231,15 +234,17 @@ def detect(req: DetectRequest) -> DetectResponse:
             )
             vr = rx.receive(msg, obs.receive_time_epoch)
             if vr is not None:
-                results.append(DetectionResult(
-                    svid=vr.svid,
-                    epoch=vr.epoch,
-                    disclosure_epoch=vr.disclosure_epoch,
-                    key_valid=vr.key_valid,
-                    mac_valid=vr.mac_valid,
-                    receipt_safe=vr.receipt_safe,
-                    spoofing_detected=vr.detected,
-                ))
+                results.append(
+                    DetectionResult(
+                        svid=vr.svid,
+                        epoch=vr.epoch,
+                        disclosure_epoch=vr.disclosure_epoch,
+                        key_valid=vr.key_valid,
+                        mac_valid=vr.mac_valid,
+                        receipt_safe=vr.receipt_safe,
+                        spoofing_detected=vr.detected,
+                    )
+                )
     except HTTPException:
         raise
     except Exception as e:
@@ -257,7 +262,7 @@ def detect(req: DetectRequest) -> DetectResponse:
 # T1300  Monte Carlo signal-level spoofing detection
 # ---------------------------------------------------------------------------
 
-_N_MC_MAX: int = 2000   # upper bound to keep response time reasonable
+_N_MC_MAX: int = 2000  # upper bound to keep response time reasonable
 
 
 class SpooferSimRequest(BaseModel):
@@ -276,9 +281,7 @@ class SpooferSimRequest(BaseModel):
     spoof_diff_std: float = Field(
         default=0.80, ge=0.0, description="Per-satellite differential spoofing noise 1-σ [Hz]"
     )
-    graph_sigma: float = Field(
-        default=1.50, gt=0.0, description="Gaussian kernel bandwidth σ [Hz]"
-    )
+    graph_sigma: float = Field(default=1.50, gt=0.0, description="Gaussian kernel bandwidth σ [Hz]")
     false_alarm_rate: float = Field(
         default=0.05, gt=0.0, lt=1.0, description="Neyman-Pearson target false-alarm rate α"
     )

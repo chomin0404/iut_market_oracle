@@ -158,9 +158,7 @@ def run_detection(
 
     alerts: list[EntropyAlert] = []
     alerts.extend(_kl_alerts(kl_series, kl_threshold, experiment_id))
-    alerts.extend(
-        _gradient_alerts(rate_series, gradient_threshold, experiment_id, step_offset)
-    )
+    alerts.extend(_gradient_alerts(rate_series, gradient_threshold, experiment_id, step_offset))
     # Sort alerts chronologically.
     alerts.sort(key=lambda a: a.triggered_at)
 

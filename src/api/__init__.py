@@ -1,4 +1,5 @@
 """API package — adds src/ to sys.path so intra-package imports resolve."""
+
 import sys
 from pathlib import Path
 

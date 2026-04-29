@@ -1,4 +1,5 @@
 """Valuation endpoints: DCF scenario running and reverse DCF."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -45,7 +46,9 @@ class ReverseDCFResponse(BaseModel):
 
 
 class RunAllRequest(BaseModel):
-    scenario_dir: str = Field(default="configs/scenarios", description="Directory with *.yaml scenario files")
+    scenario_dir: str = Field(
+        default="configs/scenarios", description="Directory with *.yaml scenario files"
+    )
 
 
 # ---------------------------------------------------------------------------

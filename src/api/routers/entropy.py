@@ -1,4 +1,5 @@
 """Entropy monitoring and regime-change detection endpoints."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -90,7 +91,10 @@ def detect(req: DetectRequest) -> EntropyReport:
                         alert_type=AlertType.KL_THRESHOLD,
                         metric_value=kl_val,
                         threshold=req.kl_threshold,
-                        message=f"KL {kl_val:.4f} > threshold {req.kl_threshold:.4f} at step {step}",
+                        message=(
+                            f"KL {kl_val:.4f} > threshold {req.kl_threshold:.4f}"
+                            f" at step {step}"
+                        ),
                     )
                 )
 

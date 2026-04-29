@@ -31,30 +31,30 @@ from schemas import MSRunResult, MSRunTrace, MSSimReport
 # Simulation constants
 # ---------------------------------------------------------------------------
 
-_PR_NOMINAL: float = 20_200_000.0      # m  — nominal pseudorange offset
-_AoA_SIM_SCALE: float = 10.0           # deg — AoA term in similarity exponent
-_DOPP_SIM_SCALE: float = 0.12          # Hz  — Doppler term in similarity exponent
-_INS_SIM_SCALE: float = 1.5            # m/s — INS term in similarity exponent
-_PERC_THRESHOLD: float = 0.35          # adjacency weight cutoff
-_ANGULAR_GAP_MIN: float = 12.0         # deg — min AoA separation for subset
+_PR_NOMINAL: float = 20_200_000.0  # m  — nominal pseudorange offset
+_AoA_SIM_SCALE: float = 10.0  # deg — AoA term in similarity exponent
+_DOPP_SIM_SCALE: float = 0.12  # Hz  — Doppler term in similarity exponent
+_INS_SIM_SCALE: float = 1.5  # m/s — INS term in similarity exponent
+_PERC_THRESHOLD: float = 0.35  # adjacency weight cutoff
+_ANGULAR_GAP_MIN: float = 12.0  # deg — min AoA separation for subset
 _MAX_SUBSET_SIZE: int = 5
 _MIN_SUBSET_SIZE: int = 4
-_CHI_SCALE: float = 0.35               # chi normalisation divisor
-_AOA_DIVERSITY_SCALE: float = 90.0     # deg — Lorentz deviation denominator
-_INS_LOCAL_SCALE: float = 4.0          # m/s — subset ranking: INS weight
-_DOPP_LOCAL_SCALE: float = 0.8         # Hz  — subset ranking: Doppler weight
-_DOPP_INCONS_SCALE: float = 50.0       # pos-error contribution from Doppler std
-_INS_INCONS_SCALE: float = 10.0        # pos-error contribution from INS mean abs
-_DRIFT_PER_EPOCH_DENOM: float = 25.0   # m  — spoofed INS drift denominator
-_SPOOF_AoA_JITTER: float = 1.0         # deg — per-satellite AoA jitter under attack
+_CHI_SCALE: float = 0.35  # chi normalisation divisor
+_AOA_DIVERSITY_SCALE: float = 90.0  # deg — Lorentz deviation denominator
+_INS_LOCAL_SCALE: float = 4.0  # m/s — subset ranking: INS weight
+_DOPP_LOCAL_SCALE: float = 0.8  # Hz  — subset ranking: Doppler weight
+_DOPP_INCONS_SCALE: float = 50.0  # pos-error contribution from Doppler std
+_INS_INCONS_SCALE: float = 10.0  # pos-error contribution from INS mean abs
+_DRIFT_PER_EPOCH_DENOM: float = 25.0  # m  — spoofed INS drift denominator
+_SPOOF_AoA_JITTER: float = 1.0  # deg — per-satellite AoA jitter under attack
 
 # Geometry model: AoA sinusoid amplitude / frequency params
 _AoA_ANIM_AMP: float = 8.0
-_AoA_ANIM_PHASE_STEP: float = 0.3      # rad per satellite index
+_AoA_ANIM_PHASE_STEP: float = 0.3  # rad per satellite index
 _DOPP_AMP: float = 0.6
 _DOPP_ORTHO_AMP: float = 0.15
-_DOPP_ORTHO_PHASE_STEP: float = 0.21   # rad per satellite index
-_PR_GEOM_AMP: float = 15.0             # m
+_DOPP_ORTHO_PHASE_STEP: float = 0.21  # rad per satellite index
+_PR_GEOM_AMP: float = 15.0  # m
 
 
 # ---------------------------------------------------------------------------
@@ -143,9 +143,8 @@ def _geometry_features(
     base = np.linspace(0.0, 360.0, n_sat, endpoint=False)
     phase = 2.0 * math.pi * t / T + np.arange(n_sat) * _AoA_ANIM_PHASE_STEP
     aoa_true = (base + _AoA_ANIM_AMP * np.sin(phase)) % 360.0
-    dopp_true = (
-        _DOPP_AMP * np.sin(np.deg2rad(aoa_true))
-        + _DOPP_ORTHO_AMP * np.cos(2.0 * math.pi * t / T + np.arange(n_sat) * _DOPP_ORTHO_PHASE_STEP)
+    dopp_true = _DOPP_AMP * np.sin(np.deg2rad(aoa_true)) + _DOPP_ORTHO_AMP * np.cos(
+        2.0 * math.pi * t / T + np.arange(n_sat) * _DOPP_ORTHO_PHASE_STEP
     )
     pr_bias_geom = _PR_GEOM_AMP * np.cos(np.deg2rad(aoa_true))
     return aoa_true, dopp_true, pr_bias_geom
@@ -160,11 +159,11 @@ def _geometry_features(
 class _Meas:
     """Raw multi-sensor measurements at one epoch."""
 
-    pr: np.ndarray     # (n_sat,) pseudorange [m]
-    dopp: np.ndarray   # (n_sat,) Doppler [Hz]
-    aoa: np.ndarray    # (n_sat,) angle of arrival [deg]
-    ins: np.ndarray    # (n_sat,) INS residuals [m/s equiv]
-    mix: float         # spoofing mix fraction α ∈ [0, 1]
+    pr: np.ndarray  # (n_sat,) pseudorange [m]
+    dopp: np.ndarray  # (n_sat,) Doppler [Hz]
+    aoa: np.ndarray  # (n_sat,) angle of arrival [deg]
+    ins: np.ndarray  # (n_sat,) INS residuals [m/s equiv]
+    mix: float  # spoofing mix fraction α ∈ [0, 1]
 
 
 def build_measurements(

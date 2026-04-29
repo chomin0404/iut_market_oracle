@@ -17,6 +17,7 @@ NTT design adapted from rlwe_signature.py (negacyclic Twist-NTT):
     Forward:  a_twist = a · ψ^j → NTT_ω(a_twist)
     Inverse:  INTT_ω(·) → untwist by ψ^{-j} / N
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -29,13 +30,13 @@ import numpy as np
 # Ring-LWE constants
 # ---------------------------------------------------------------------------
 
-_Q: int = 12289    # NTT-friendly prime (Q-1 = 2^12 · 3)
-_N: int = 256      # polynomial degree
+_Q: int = 12289  # NTT-friendly prime (Q-1 = 2^12 · 3)
+_N: int = 256  # polynomial degree
 
-RLWE_KAPPA: int = 23      # challenge weight (number of ±1 entries)
+RLWE_KAPPA: int = 23  # challenge weight (number of ±1 entries)
 RLWE_SIGMA: float = 180.0  # Gaussian σ for masking polynomial y
 RLWE_SIGMA_S: float = 3.2  # Gaussian σ for secret key s
-RLWE_BETA: int = 2400      # rejection bound ‖z‖∞ ≤ BETA
+RLWE_BETA: int = 2400  # rejection bound ‖z‖∞ ≤ BETA
 RLWE_MAX_ATTEMPTS: int = 300
 
 QUANTUM_FIDELITY_THRESHOLD: float = 0.85
@@ -43,7 +44,7 @@ QUANTUM_FIDELITY_THRESHOLD: float = 0.85
 # (Bernoulli(0.5) bit statistics: E[cos²θ] ≈ (N/4)² / (N/2)² = 1/4 for N→∞)
 
 # NTT primitive roots
-_G = 11                              # primitive root of Z_Q
+_G = 11  # primitive root of Z_Q
 _PSI = pow(_G, (_Q - 1) // (2 * _N), _Q)  # primitive 2N-th root of unity
 _OMEGA = _PSI * _PSI % _Q
 
@@ -51,6 +52,7 @@ _OMEGA = _PSI * _PSI % _Q
 # ---------------------------------------------------------------------------
 # Negacyclic NTT engine (Z_Q[x] / (x^N + 1))
 # ---------------------------------------------------------------------------
+
 
 class _NTTEngine:
     """Twist-NTT for negacyclic polynomial multiplication mod (x^N+1, Q).
@@ -151,6 +153,7 @@ _NTT = _NTTEngine()  # module-level singleton, initialized once at import
 # Polynomial ring utilities
 # ---------------------------------------------------------------------------
 
+
 def _center(a: np.ndarray) -> np.ndarray:
     """Center polynomial coefficients into [-Q/2, Q/2)."""
     a = a % _Q
@@ -173,6 +176,7 @@ def _inf_norm(a: np.ndarray) -> int:
 # Sampling
 # ---------------------------------------------------------------------------
 
+
 def _sample_uniform(rng: np.random.Generator) -> np.ndarray:
     return rng.integers(0, _Q, size=_N, dtype=np.int64)
 
@@ -188,7 +192,7 @@ def _sample_challenge(seed: bytes) -> np.ndarray:
     positions: set[int] = set()
     idx = 0
     while len(positions) < RLWE_KAPPA:
-        pos = int.from_bytes(stream[idx: idx + 2], "little") % _N
+        pos = int.from_bytes(stream[idx : idx + 2], "little") % _N
         idx += 2
         positions.add(pos)
     for i, pos in enumerate(sorted(positions)):
@@ -205,6 +209,7 @@ def _poly_hash(w: np.ndarray, msg: bytes) -> bytes:
 # RLWE key / signature data structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _RLWEPublicKey:
     a: np.ndarray  # uniform random polynomial in Z_Q[x]/(x^N+1)
@@ -220,6 +225,7 @@ class _RLWEPrivateKey:
 # ---------------------------------------------------------------------------
 # Lyubashevsky signature primitives
 # ---------------------------------------------------------------------------
+
 
 def _rlwe_keygen(rng: np.random.Generator) -> tuple[_RLWEPublicKey, _RLWEPrivateKey]:
     a = _sample_uniform(rng)
@@ -263,20 +269,22 @@ def _rlwe_verify(pk: _RLWEPublicKey, msg: bytes, z: np.ndarray, c: np.ndarray) -
 # Serialization helpers
 # ---------------------------------------------------------------------------
 
+
 def _sig_to_bytes(z: np.ndarray, c: np.ndarray) -> bytes:
     """Serialize (z, c) → 768 bytes: z as int16×N (512B) + c as int8×N (256B)."""
     return z.astype(np.int16).tobytes() + c.astype(np.int8).tobytes()
 
 
 def _sig_from_bytes(data: bytes) -> tuple[np.ndarray, np.ndarray]:
-    z = np.frombuffer(data[:2 * _N], dtype=np.int16).astype(np.int64)
-    c = np.frombuffer(data[2 * _N:], dtype=np.int8).astype(np.int64)
+    z = np.frombuffer(data[: 2 * _N], dtype=np.int16).astype(np.int64)
+    c = np.frombuffer(data[2 * _N :], dtype=np.int8).astype(np.int64)
     return z, c
 
 
 # ---------------------------------------------------------------------------
 # RLWEAuthority — drop-in replacement for OSNMAAuthority
 # ---------------------------------------------------------------------------
+
 
 class RLWEAuthority:
     """Ring-LWE Lyubashevsky signing authority for OSNMA root-key authentication.
@@ -293,9 +301,7 @@ class RLWEAuthority:
     def __init__(self, seed: int | None = None) -> None:
         rng = np.random.default_rng(seed)
         self._pk, self._sk = _rlwe_keygen(rng)
-        self._sign_rng = np.random.default_rng(
-            0 if seed is None else seed + 1
-        )
+        self._sign_rng = np.random.default_rng(0 if seed is None else seed + 1)
 
     @property
     def public_key(self) -> _RLWEPublicKey:
@@ -316,9 +322,7 @@ class RLWEAuthority:
         z, c = _rlwe_sign(self._sk, msg, self._sign_rng)
         return _sig_to_bytes(z, c)
 
-    def verify_root_sig(
-        self, kroot: bytes, epoch: int, params: dict[str, int], sig: bytes
-    ) -> bool:
+    def verify_root_sig(self, kroot: bytes, epoch: int, params: dict[str, int], sig: bytes) -> bool:
         msg = self._build_signed_msg(kroot, epoch, params)
         if len(sig) != 3 * _N:
             return False
@@ -329,6 +333,7 @@ class RLWEAuthority:
 # ---------------------------------------------------------------------------
 # QuantumFidelityDetector
 # ---------------------------------------------------------------------------
+
 
 class QuantumFidelityDetector:
     """Amplitude-encoded quantum fidelity anomaly detector for NAV ephemeris.

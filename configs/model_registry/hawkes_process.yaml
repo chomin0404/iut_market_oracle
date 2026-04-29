@@ -1,0 +1,47 @@
+id: hawkes_process
+name: Hawkes Process
+category: point_processes
+tags: [self_exciting, point_process, finance, seismology, clustering, mle]
+problem_type: Self-exciting temporal point process modelling clustered event arrivals
+objective: Estimate background rate and excitation kernel maximising event likelihood
+state_variables:
+  - "λ(t): conditional intensity (instantaneous event rate) ∈ ℝ_{≥0}"
+  - "N(t): cumulative event count up to time t"
+observables:
+  - "{t_i}: sequence of observed event times t_1 < t_2 < … < t_n"
+parameters:
+  - "μ: background (baseline) intensity μ > 0"
+  - "α: excitation amplitude α ≥ 0 (must satisfy α < β for stationarity)"
+  - "β: exponential decay rate β > 0"
+constraints:
+  - "μ > 0, α ≥ 0, β > 0"
+  - "α/β < 1 (stationarity / subcritical condition)"
+uncertainty:
+  arrivals: "Event times are random; inter-arrivals are not i.i.d."
+equations:
+  - "Intensity: λ(t) = μ + α ∑_{t_i < t} e^{-β(t - t_i)}"
+  - "Log-likelihood: ℓ = ∑_i log λ(t_i) - ∫_0^T λ(t) dt"
+  - "Integral: ∫_0^T λ(t) dt = μT + (α/β) ∑_i (1 - e^{-β(T - t_i)})"
+  - "Branching ratio: n = α/β (expected offspring per event)"
+  - "Stationary mean rate: λ̄ = μ / (1 - n)"
+priors:
+  mu: "Exponential(1)"
+  alpha: "Uniform(0, beta) — enforces subcriticality"
+  beta: "Gamma(2, 1)"
+loss_function: "Negative log-likelihood of the point process"
+solver: L-BFGS-B MLE or MCMC with subcriticality constraint
+outputs:
+  - "μ̂, α̂, β̂: estimated intensity parameters"
+  - "Branching ratio n̂ = α̂/β̂"
+  - "Simulated event sequence via Ogata's thinning algorithm"
+  - "Residual process Λ(t_i) = ∫₀^{t_i} λ(s) ds (should be unit Poisson)"
+assumptions:
+  - "Exponential decay kernel (simplest self-exciting kernel)"
+  - "Subcritical branching (α/β < 1) for stationarity"
+  - "Events are fully observed; no latent events"
+evidence_needed:
+  - "Timestamped event sequence over observation window [0, T]"
+  - "Domain knowledge on typical inter-event times for β initialisation"
+references:
+  - "Hawkes, A.G. (1971). Spectra of some self-exciting and mutually exciting point processes. Biometrika, 58(1), 83-90."
+  - "Ogata, Y. (1988). Statistical models for earthquake occurrences. J. American Statistical Assoc., 83(401), 9-27."

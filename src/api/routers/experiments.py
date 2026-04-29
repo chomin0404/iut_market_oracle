@@ -1,4 +1,5 @@
 """Experiment registry endpoints."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -80,7 +81,9 @@ def get(exp_id: str, experiments_root: str = "experiments") -> ExperimentMeta:
 @router.patch("/{exp_id}", response_model=ExperimentMeta)
 def update(exp_id: str, req: ExperimentUpdateRequest) -> ExperimentMeta:
     """Update writable fields of an existing experiment."""
-    fields = {k: v for k, v in req.model_dump(exclude={"experiments_root"}).items() if v is not None}
+    fields = {
+        k: v for k, v in req.model_dump(exclude={"experiments_root"}).items() if v is not None
+    }
     try:
         return update_experiment(exp_id, experiments_root=req.experiments_root, **fields)
     except (FileNotFoundError, ValueError) as e:

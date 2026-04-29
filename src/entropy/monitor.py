@@ -97,17 +97,13 @@ def _beta_params_from_posterior(posterior: PosteriorSummary) -> tuple[float, flo
     var = posterior.variance
 
     if not (0.0 < mu < 1.0):
-        raise ValueError(
-            f"Beta method-of-moments requires mean in (0,1), got {mu}"
-        )
+        raise ValueError(f"Beta method-of-moments requires mean in (0,1), got {mu}")
     if var <= 0.0:
         raise ValueError(f"variance must be strictly positive, got {var}")
 
     denom = mu * (1.0 - mu)
     if var >= denom:
-        raise ValueError(
-            f"variance ({var}) must be < mean*(1-mean) ({denom}) for Beta MoM"
-        )
+        raise ValueError(f"variance ({var}) must be < mean*(1-mean) ({denom}) for Beta MoM")
 
     n = denom / var - 1.0
     if n <= 0.0:
@@ -194,14 +190,9 @@ def kl_normal(
     """
     if var_q <= 0.0 or var_p <= 0.0:
         raise ValueError(
-            f"Both variances must be strictly positive; "
-            f"got var_q={var_q}, var_p={var_p}"
+            f"Both variances must be strictly positive; got var_q={var_q}, var_p={var_p}"
         )
-    return (
-        0.5 * math.log(var_p / var_q)
-        + (var_q + (mu_q - mu_p) ** 2) / (2.0 * var_p)
-        - 0.5
-    )
+    return 0.5 * math.log(var_p / var_q) + (var_q + (mu_q - mu_p) ** 2) / (2.0 * var_p) - 0.5
 
 
 # ---------------------------------------------------------------------------

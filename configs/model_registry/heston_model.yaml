@@ -1,0 +1,55 @@
+id: heston_model
+name: Heston Stochastic Volatility Model
+category: financial_derivatives
+tags: [stochastic_volatility, options, finance, characteristic_function, fourier, smile]
+problem_type: Option pricing under stochastic volatility with mean-reverting variance
+objective: Price European options consistent with observed implied volatility smile/skew
+state_variables:
+  - "S_t: asset price ∈ ℝ_{>0}"
+  - "v_t: instantaneous variance ∈ ℝ_{≥0} (stochastic)"
+observables:
+  - "C(K,T): market call prices across strikes K and maturities T"
+  - "σ_IV(K,T): implied volatility surface"
+parameters:
+  - "κ: variance mean-reversion speed (κ > 0)"
+  - "θ: long-run variance (θ > 0)"
+  - "σ_v: volatility of variance (vol-of-vol, σ_v > 0)"
+  - "ρ: correlation between asset and variance Brownian motions (ρ ∈ (-1,1))"
+  - "v_0: initial variance (v_0 > 0)"
+constraints:
+  - "Feller condition: 2κθ > σ_v² (ensures v_t > 0 a.s.)"
+  - "|ρ| < 1"
+  - "κ, θ, σ_v, v_0 > 0"
+uncertainty:
+  asset: "dS_t = r S_t dt + √v_t S_t dW_t^S"
+  variance: "dv_t = κ(θ - v_t) dt + σ_v √v_t dW_t^v"
+  correlation: "dW_t^S dW_t^v = ρ dt"
+equations:
+  - "Asset SDE: dS_t = r S_t dt + √v_t S_t dW_t^S"
+  - "Variance SDE (CIR): dv_t = κ(θ - v_t) dt + σ_v √v_t dW_t^v"
+  - "Call price: C = S_0 P_1 - K e^{-rT} P_2"
+  - "Characteristic function: φ(u; t) = exp(C(u,t) + D(u,t)v_0 + iuln(S_0))"
+  - "P_j = ½ + (1/π) ∫₀^∞ Re[e^{-iuK} φ_j(u)] / (iu) du"
+priors:
+  kappa: "Gamma(2, 1)"
+  theta: "Gamma(2, 0.1)"
+  sigma_v: "Half-Normal(0.5)"
+  rho: "Uniform(-1, 0) — typically negative for equities"
+  v_0: "Gamma(2, 0.1)"
+loss_function: "Sum of squared implied-vol errors across calibration surface"
+solver: Characteristic function + trapezoidal/FFT integration; gradient-based calibration
+outputs:
+  - "Call/put prices across (K, T) grid"
+  - "Implied volatility surface σ_IV(K,T)"
+  - "Calibrated parameters (κ̂, θ̂, σ̂_v, ρ̂, v̂_0)"
+assumptions:
+  - "Continuous trading; no transaction costs"
+  - "Constant risk-free rate r"
+  - "No jumps in the asset or variance process"
+evidence_needed:
+  - "Observed option price surface or implied vol surface"
+  - "Current asset price S_0 and risk-free rate r"
+  - "Initial variance estimate v_0 (e.g. from realised vol)"
+references:
+  - "Heston, S.L. (1993). A closed-form solution for options with stochastic volatility. Rev. Financial Studies, 6(2), 327-343."
+  - "Gatheral, J. (2006). The Volatility Surface: A Practitioner's Guide. Wiley."

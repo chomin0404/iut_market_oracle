@@ -19,6 +19,7 @@ if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
 from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
 
 from api.routers import (
     bayesian,
@@ -27,10 +28,17 @@ from api.routers import (
     experiments,
     gnss,
     graph,
+    ideas,
     matroid,
+    model,
     report,
     twin,
     valuation,
+)
+from modeling_api.examples import (
+    EXAMPLE_MODEL_RECOMMENDATION,
+    EXAMPLE_MODEL_SPEC,
+    EXAMPLE_PARSED_IDEA_RESPONSE,
 )
 
 app = FastAPI(
@@ -53,3 +61,36 @@ app.include_router(entropy.router, prefix="/entropy", tags=["entropy"])
 app.include_router(report.router, prefix="/report", tags=["report"])
 app.include_router(gnss.router, prefix="/gnss", tags=["gnss"])
 app.include_router(matroid.router, prefix="/matroid", tags=["matroid"])
+app.include_router(model.router, prefix="/model", tags=["model"])
+app.include_router(ideas.router, prefix="/ideas", tags=["ideas"])
+
+# ---------------------------------------------------------------------------
+# Custom OpenAPI: inject response-schema examples for schemas that cannot
+# use Body(openapi_examples=...) because they appear only in responses.
+# ---------------------------------------------------------------------------
+
+_RESPONSE_EXAMPLES: dict[str, dict] = {
+    "ModelRecommendation": EXAMPLE_MODEL_RECOMMENDATION,
+    "ModelSpec": EXAMPLE_MODEL_SPEC,
+    "ParsedIdeaResponse": EXAMPLE_PARSED_IDEA_RESPONSE,
+}
+
+
+def _custom_openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    component_schemas: dict = schema.get("components", {}).get("schemas", {})
+    for name, example in _RESPONSE_EXAMPLES.items():
+        if name in component_schemas:
+            component_schemas[name]["examples"] = [example]
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = _custom_openapi

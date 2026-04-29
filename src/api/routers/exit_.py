@@ -1,4 +1,5 @@
 """Exit Strategy endpoints: option pricing and timing distribution."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -93,6 +94,8 @@ def price_timing(req: PriceWithTimingRequest) -> PriceWithTimingResponse:
 def compare(req: CompareRequest) -> list[TimingDistribution]:
     """Build timing distributions for multiple options, sorted by expected_timing."""
     try:
-        return compare_exit_options(req.options, n_steps=req.n_steps, scenario_probs=req.scenario_probs)
+        return compare_exit_options(
+            req.options, n_steps=req.n_steps, scenario_probs=req.scenario_probs
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

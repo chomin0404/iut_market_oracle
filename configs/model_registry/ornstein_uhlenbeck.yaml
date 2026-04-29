@@ -1,0 +1,45 @@
+id: ornstein_uhlenbeck
+name: Ornstein-Uhlenbeck Process
+category: stochastic_processes
+tags: [mean_reversion, stochastic, continuous_time, finance, physics, pairs_trading]
+problem_type: Mean-reverting continuous-time stochastic process
+objective: Model mean-reverting dynamics; estimate speed, level, and volatility
+state_variables:
+  - "X_t: process value at time t ∈ ℝ"
+observables:
+  - "X_{t_i}: discrete observations at times t_0 < t_1 < … < t_n"
+parameters:
+  - "θ: mean-reversion speed (θ > 0)"
+  - "μ: long-run mean (equilibrium level)"
+  - "σ: diffusion coefficient (volatility, σ > 0)"
+constraints:
+  - "θ > 0 (ensures mean reversion)"
+  - "σ > 0"
+uncertainty:
+  diffusion: "dW_t: standard Brownian motion"
+equations:
+  - "SDE: dX_t = θ(μ - X_t) dt + σ dW_t"
+  - "Exact solution: X_t = X_0 e^{-θt} + μ(1 - e^{-θt}) + σ ∫₀ᵗ e^{-θ(t-s)} dW_s"
+  - "Conditional mean: E[X_t | X_0] = X_0 e^{-θt} + μ(1 - e^{-θt})"
+  - "Conditional variance: Var[X_t | X_0] = σ²/(2θ) (1 - e^{-2θt})"
+  - "Stationary distribution: X_∞ ~ N(μ, σ²/(2θ))"
+priors:
+  theta: "Gamma(2, 1) — positive, moderate reversion"
+  mu: "N(0, 10) — uninformative over equilibrium level"
+  sigma: "Half-Normal(1) — positive diffusion"
+loss_function: "Negative log-likelihood of discrete-time transition densities"
+solver: MLE (exact discrete transitions) or Bayesian MCMC (NUTS/HMC)
+outputs:
+  - "θ̂, μ̂, σ̂: MLE or posterior estimates"
+  - "Half-life: ln(2)/θ — time to halve deviation from μ"
+  - "Stationary variance: σ²/(2θ)"
+  - "Simulated path X_t"
+assumptions:
+  - "Constant coefficients θ, μ, σ over the observation window"
+  - "Continuous-time Markov process"
+evidence_needed:
+  - "Equally or irregularly spaced time series observations"
+  - "Approximate equilibrium level (or let μ be estimated)"
+references:
+  - "Uhlenbeck, G.E. & Ornstein, L.S. (1930). On the theory of the Brownian motion. Phys. Rev., 36, 823."
+  - "Vasicek, O. (1977). An equilibrium characterization of the term structure. J. Financial Economics, 5(2), 177-188."

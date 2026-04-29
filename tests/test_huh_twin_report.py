@@ -28,8 +28,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from huh_twin.report import (
     _format_float,
     build_markdown_report,

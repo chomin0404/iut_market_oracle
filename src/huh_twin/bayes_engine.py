@@ -3,6 +3,16 @@
 Provides Normal-Normal conjugate updates, regime posterior inference,
 and YAML-driven prior configuration loading.
 
+Design note
+-----------
+A second Normal-Normal implementation exists in ``src/bayesian/updater.py``
+(the API/web layer).  That version accepts ``Evidence`` Pydantic schemas with
+precision-weighted observations (``weight = 1/σ_likelihood²``).  This module
+uses a count-based interface (``observations: list[float]`` + known
+``observation_std``) suited to HuhTwin's internal simulation loop.  The two
+are intentionally kept separate to avoid coupling the web schema layer to the
+simulation internals.
+
 Mathematical conventions
 ------------------------
 Normal-Normal conjugate update
@@ -24,7 +34,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Data containers
@@ -85,11 +94,11 @@ def normal_normal_update(
     if not observations:
         return prior_mean, prior_std
 
-    tau0 = 1.0 / prior_std**2                  # prior precision
-    tau_obs = 1.0 / observation_std**2          # observation precision
+    tau0 = 1.0 / prior_std**2  # prior precision
+    tau_obs = 1.0 / observation_std**2  # observation precision
     n = len(observations)
 
-    tau_n = tau0 + n * tau_obs                  # posterior precision
+    tau_n = tau0 + n * tau_obs  # posterior precision
     mu_n = (prior_mean * tau0 + sum(observations) * tau_obs) / tau_n
     sigma_n = math.sqrt(1.0 / tau_n)
 
@@ -116,10 +125,7 @@ def regime_posterior(
     dict[str, float]
         Posterior weights normalized to sum exactly to 1.
     """
-    unnormalized = {
-        regime: prior_weights[regime] * likelihoods[regime]
-        for regime in prior_weights
-    }
+    unnormalized = {regime: prior_weights[regime] * likelihoods[regime] for regime in prior_weights}
     total = sum(unnormalized.values())
     return {regime: w / total for regime, w in unnormalized.items()}
 
@@ -163,9 +169,7 @@ def load_prior_config(config_path: Path) -> PriorConfig:
 
     obs_model: dict = raw.get("observation_model", {})
     default_std = float(obs_model.get("default_std", 0.05))
-    overrides = {
-        k: float(v) for k, v in obs_model.get("overrides", {}).items()
-    }
+    overrides = {k: float(v) for k, v in obs_model.get("overrides", {}).items()}
 
     regime_priors = {k: float(v) for k, v in raw.get("regimes", {}).items()}
 
@@ -204,9 +208,7 @@ def update_named_priors(
 
     for name, observations in observations_by_name.items():
         prior = config.priors[name]
-        obs_std = config.observation_std_overrides.get(
-            name, config.default_observation_std
-        )
+        obs_std = config.observation_std_overrides.get(name, config.default_observation_std)
 
         posterior_mean, posterior_std = normal_normal_update(
             prior_mean=prior.mean,

@@ -1,0 +1,47 @@
+id: heat_equation
+name: Heat Equation (Parabolic PDE)
+category: partial_differential_equations
+tags: [pde, diffusion, physics, numerical_methods, finite_difference, fourier]
+problem_type: Parabolic PDE modelling diffusion of heat (or any diffusive quantity)
+objective: Find temperature distribution u(x,t) satisfying the diffusion equation with BCs/ICs
+state_variables:
+  - "u(x,t): temperature (or concentration) field ∈ ℝ at position x ∈ Ω, time t ≥ 0"
+observables:
+  - "u(x_i, t_j): pointwise measurements of temperature at sensor locations"
+parameters:
+  - "α: thermal diffusivity α > 0 (α = k/(ρ c_p))"
+  - "k: thermal conductivity"
+  - "ρ: material density"
+  - "c_p: specific heat capacity"
+constraints:
+  - "α > 0"
+  - "Boundary conditions: Dirichlet u|_∂Ω = g, or Neumann ∂u/∂n|_∂Ω = h"
+  - "Initial condition: u(x,0) = u_0(x)"
+uncertainty:
+  measurement: "u_obs(x_i, t_j) = u(x_i, t_j) + ε, ε ~ N(0, σ²_obs)"
+  parameter: "α may be spatially varying or uncertain"
+equations:
+  - "1D PDE: ∂u/∂t = α ∂²u/∂x²"
+  - "nD PDE: ∂u/∂t = α ∇²u = α Δu"
+  - "Analytical 1D (Dirichlet, u(0)=u(L)=0): u(x,t) = ∑_n b_n sin(nπx/L) exp(-α(nπ/L)²t)"
+  - "Fourier coefficients: b_n = (2/L) ∫_0^L u_0(x) sin(nπx/L) dx"
+  - "Stability (explicit FD): Δt ≤ Δx²/(2α) (CFL condition)"
+priors:
+  log_alpha: "N(log(1e-4), 1) — uninformative over thermal diffusivities"
+loss_function: "||u_obs - u_model||²_F (least squares fit to sensor data)"
+solver: Analytical Fourier series (1D); finite difference (Crank-Nicolson); FEM for complex geometry
+outputs:
+  - "u(x,t): full temperature field"
+  - "Estimated α̂ from inverse problem"
+  - "Heat flux: q = -k ∇u"
+assumptions:
+  - "Linear diffusion (constant α)"
+  - "No heat generation sources (homogeneous equation)"
+  - "Well-posed boundary conditions"
+evidence_needed:
+  - "Boundary and initial conditions u_0(x)"
+  - "Material thermal diffusivity α (from literature or inverse estimation)"
+  - "Geometry of domain Ω"
+references:
+  - "Crank, J. (1975). The Mathematics of Diffusion. Oxford University Press."
+  - "Evans, L.C. (2010). Partial Differential Equations (2nd ed.). AMS Graduate Studies."

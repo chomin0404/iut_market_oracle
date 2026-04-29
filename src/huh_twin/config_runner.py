@@ -41,8 +41,8 @@ _TWO_WAY_KEY = "two_way"
 @dataclass(frozen=True)
 class ValuationRunResult:
     base_inputs: DCFInputs
-    one_way: dict[str, list[SensitivityPoint]]   # variable → sweep rows
-    two_way: list[SensitivityGridPoint] | None    # None when absent from config
+    one_way: dict[str, list[SensitivityPoint]]  # variable → sweep rows
+    two_way: list[SensitivityGridPoint] | None  # None when absent from config
 
 
 def load_valuation_config(path: Path) -> ValuationRunResult:

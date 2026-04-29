@@ -1,0 +1,49 @@
+id: gaussian_process
+name: Gaussian Process Regression
+category: nonparametric_regression
+tags: [gaussian_process, bayesian, nonparametric, kernel, gp, ml, uncertainty_quantification]
+problem_type: Non-parametric Bayesian regression with uncertainty quantification
+objective: Infer posterior distribution over functions given noisy observations
+state_variables:
+  - "f: latent function f: ℝ^d → ℝ (function-valued random variable)"
+observables:
+  - "y_i = f(x_i) + ε_i: noisy observations at inputs x_i"
+parameters:
+  - "k(x, x'): covariance (kernel) function"
+  - "σ²_n: observation noise variance"
+  - "θ_k: kernel hyperparameters (e.g. length-scale ℓ, signal variance σ²_f)"
+constraints:
+  - "k(x, x') must be positive semi-definite"
+  - "σ²_n > 0"
+uncertainty:
+  prior: "f ~ GP(m(x), k(x, x'))"
+  likelihood: "y | f ~ N(f(x), σ²_n I)"
+equations:
+  - "Prior: f ~ GP(m, k)"
+  - "Marginal likelihood: log p(y|X,θ) = -½ y^T K_y^{-1} y - ½ log|K_y| - n/2 log(2π)"
+  - "K_y = K(X,X) + σ²_n I"
+  - "Posterior mean: μ*(x*) = k(x*,X) K_y^{-1} y"
+  - "Posterior variance: σ²*(x*) = k(x*,x*) - k(x*,X) K_y^{-1} k(X,x*)"
+  - "Squared Exp kernel: k(x,x') = σ²_f exp(-||x-x'||²/(2ℓ²))"
+priors:
+  log_length_scale: "N(0, 1)"
+  log_signal_variance: "N(0, 1)"
+  log_noise_variance: "N(-2, 1)"
+loss_function: "Negative log marginal likelihood (type-II MLE for hyperparameters)"
+solver: Cholesky factorisation for exact inference; sparse/variational for large n
+outputs:
+  - "μ*(x*): posterior predictive mean"
+  - "σ²*(x*): posterior predictive variance"
+  - "95% credible intervals at test points"
+  - "Optimised kernel hyperparameters θ̂"
+assumptions:
+  - "Observations are corrupted by additive Gaussian noise"
+  - "Stationarity of the covariance function (for SE/Matérn kernels)"
+  - "O(n³) exact inference; approximations needed for n > ~10,000"
+evidence_needed:
+  - "Input-output training pairs (X, y)"
+  - "Choice of kernel function (domain knowledge)"
+  - "Prior beliefs over length-scale and signal variance"
+references:
+  - "Rasmussen, C.E. & Williams, C.K.I. (2006). Gaussian Processes for Machine Learning. MIT Press."
+  - "Titsias, M. (2009). Variational learning of inducing variables in sparse GPs. AISTATS."

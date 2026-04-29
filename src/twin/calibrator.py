@@ -79,9 +79,7 @@ def calibrate(
         If prior.distribution != "normal" or obs_precision <= 0.
     """
     if prior.distribution.lower() != "normal":
-        raise ValueError(
-            f"calibrate requires distribution='normal', got '{prior.distribution}'"
-        )
+        raise ValueError(f"calibrate requires distribution='normal', got '{prior.distribution}'")
     if obs_precision <= 0.0:
         raise ValueError(f"obs_precision must be > 0, got {obs_precision}")
 

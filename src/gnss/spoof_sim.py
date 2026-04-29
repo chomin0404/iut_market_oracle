@@ -37,26 +37,26 @@ from schemas import MCSimReport, RunResult, RunTrace
 # Physical constants
 # ---------------------------------------------------------------------------
 
-_SPEED_OF_LIGHT: float = 2.998e8   # m/s
-_L1_FREQ: float = 1575.42e6        # Hz  (GPS L1 carrier)
+_SPEED_OF_LIGHT: float = 2.998e8  # m/s
+_L1_FREQ: float = 1575.42e6  # Hz  (GPS L1 carrier)
 
 # ---------------------------------------------------------------------------
 # Simulation constants
 # ---------------------------------------------------------------------------
 
-_DOPPLER_NOISE_STD: float = 0.30   # Hz  — genuine measurement noise 1-σ
-_SPOOF_BIAS_STD: float = 2.50      # Hz  — common meaconing bias 1-σ
-_SPOOF_DIFF_STD: float = 0.80      # Hz  — per-satellite differential bias 1-σ
-_GRAPH_SIGMA: float = 1.50         # Hz  — Gaussian kernel bandwidth σ
-_VEL_PROCESS_STD: float = 0.05     # m/s per epoch — receiver velocity random walk
-_CLOCK_PROCESS_STD: float = 0.02   # m/s equivalent — clock drift random walk
-_INS_VEL_STD: float = 0.05         # m/s — INS velocity error 1-σ
-_INS_CLOCK_STD: float = 0.01       # m/s equivalent — INS clock error 1-σ
-_PVT_DIM: int = 4                  # unknowns: [Δvx, Δvy, Δvz, Δb_dot]
-_ROC_N_THRESHOLDS: int = 200       # resolution for ROC curve
-_FISHER_DOF: int = 6               # χ²(6): 3 statistics × 2 df each (Fisher combination)
-_EPS: float = 1e-300               # p-value floor to prevent log(0)
-_DIRICHLET_ALPHA: float = 2.0      # symmetric Dirichlet concentration parameter
+_DOPPLER_NOISE_STD: float = 0.30  # Hz  — genuine measurement noise 1-σ
+_SPOOF_BIAS_STD: float = 2.50  # Hz  — common meaconing bias 1-σ
+_SPOOF_DIFF_STD: float = 0.80  # Hz  — per-satellite differential bias 1-σ
+_GRAPH_SIGMA: float = 1.50  # Hz  — Gaussian kernel bandwidth σ
+_VEL_PROCESS_STD: float = 0.05  # m/s per epoch — receiver velocity random walk
+_CLOCK_PROCESS_STD: float = 0.02  # m/s equivalent — clock drift random walk
+_INS_VEL_STD: float = 0.05  # m/s — INS velocity error 1-σ
+_INS_CLOCK_STD: float = 0.01  # m/s equivalent — INS clock error 1-σ
+_PVT_DIM: int = 4  # unknowns: [Δvx, Δvy, Δvz, Δb_dot]
+_ROC_N_THRESHOLDS: int = 200  # resolution for ROC curve
+_FISHER_DOF: int = 6  # χ²(6): 3 statistics × 2 df each (Fisher combination)
+_EPS: float = 1e-300  # p-value floor to prevent log(0)
+_DIRICHLET_ALPHA: float = 2.0  # symmetric Dirichlet concentration parameter
 
 
 # ---------------------------------------------------------------------------
@@ -96,9 +96,7 @@ class SimConfig:
 
     def __post_init__(self) -> None:
         if self.subset_size >= self.n_sats:
-            raise ValueError(
-                f"subset_size ({self.subset_size}) must be < n_sats ({self.n_sats})"
-            )
+            raise ValueError(f"subset_size ({self.subset_size}) must be < n_sats ({self.n_sats})")
         if not (0.0 < self.false_alarm_rate < 1.0):
             raise ValueError("false_alarm_rate must be in (0, 1)")
         if self.n_sats < _PVT_DIM + 1:
@@ -123,9 +121,7 @@ def _init_constellation(n_sats: int) -> np.ndarray:
     # co-latitude in (0, π/2): ensure strictly positive elevation
     theta = np.arccos(1.0 - (idx + 0.5) / n_sats)
     phi = 2.0 * math.pi * idx / golden
-    e = np.column_stack(
-        [np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]
-    )
+    e = np.column_stack([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
     return e  # (n_sats, 3)
 
 
@@ -178,15 +174,15 @@ def _propagate_state(
 
 
 def _true_doppler(
-    los: np.ndarray,       # (n_sats, 3) unit LOS vectors
-    vel: np.ndarray,       # (3,) receiver velocity [m/s]
-    clock_drift: float,    # [m/s equivalent]
+    los: np.ndarray,  # (n_sats, 3) unit LOS vectors
+    vel: np.ndarray,  # (3,) receiver velocity [m/s]
+    clock_drift: float,  # [m/s equivalent]
 ) -> np.ndarray:
     """Doppler shift [Hz] for each satellite.
 
     Δf_i = −(f_L1/c) · (e_i · v + b_dot)
     """
-    radial = los @ vel + clock_drift     # (n_sats,) [m/s]
+    radial = los @ vel + clock_drift  # (n_sats,) [m/s]
     return -(_L1_FREQ / _SPEED_OF_LIGHT) * radial  # (n_sats,) [Hz]
 
 
@@ -250,7 +246,7 @@ def _build_graph(doppler_dev: np.ndarray, sigma: float) -> np.ndarray:
 
     w_{ij} = exp(−|Δf_i − Δf_j|² / σ²),  diagonal forced to zero.
     """
-    diff = doppler_dev[:, None] - doppler_dev[None, :]   # (n, n)
+    diff = doppler_dev[:, None] - doppler_dev[None, :]  # (n, n)
     W = np.exp(-(diff**2) / (sigma**2))
     np.fill_diagonal(W, 0.0)
     return W
@@ -428,7 +424,7 @@ def wls_pvt(
     """
     H = _geometry_matrix(los, S)
     y = doppler_dev[S]
-    w = W[np.ix_(S, S)].sum(axis=1) + 1e-9   # row-sum weights, avoid zero
+    w = W[np.ix_(S, S)].sum(axis=1) + 1e-9  # row-sum weights, avoid zero
     W_diag = np.diag(w)
     HTW = H.T @ W_diag
     HTWH = HTW @ H
@@ -632,8 +628,13 @@ def simulate_trial(
         under_attack = attacked and (attack_start <= t < attack_end)
 
         meas = _gen_genuine_measurements(
-            los, vel, clock_drift, vel_hat, clock_hat,
-            config.doppler_noise_std, rng,
+            los,
+            vel,
+            clock_drift,
+            vel_hat,
+            clock_hat,
+            config.doppler_noise_std,
+            rng,
         )
         if under_attack:
             meas = _inject_attack(meas, b_common, config.spoof_diff_std, config.n_sats, rng)

@@ -7,23 +7,11 @@ prompt-item registry, and to check for duplicates.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
+# SkillBasis and ClassifiedSkill are the canonical shared types defined in
+# skill_classification.py.  Import from there to avoid duplicate definitions.
+from huh_twin.skill_classification import ClassifiedSkill, SkillBasis
 
-
-class SkillBasis(str, Enum):
-    PROBABILISTIC_INFERENCE = "probabilistic_inference"
-    VALUATION_AND_CAPITAL_ALLOCATION = "valuation_and_capital_allocation"
-    INVERSE_PROBLEMS_AND_SIMULATION = "inverse_problems_and_simulation"
-    OPTIMAL_EXPERIMENT_DESIGN = "optimal_experiment_design"
-    STRATEGY_AND_IMPLEMENTATION = "strategy_and_implementation"
-
-
-@dataclass(frozen=True, slots=True)
-class ClassifiedSkill:
-    name: str
-    basis: SkillBasis
-    note: str
+__all__ = ["ClassifiedSkill", "SkillBasis"]
 
 
 # ---------------------------------------------------------------------------

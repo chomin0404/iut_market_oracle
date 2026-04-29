@@ -77,7 +77,8 @@ def test_classification_dict_contains_known_examples() -> None:
     assert mapping["ベイズ統計"]["basis"] == "probabilistic_inference"
     assert mapping["DCF法"]["basis"] == "valuation_and_capital_allocation"
     assert mapping["ラドン変換（Radon Transform）"]["basis"] == "inverse_problems_and_simulation"
-    assert mapping["実験計画法（Optimal Design of Experiments）"]["basis"] == "optimal_experiment_design"
+    key = "実験計画法（Optimal Design of Experiments）"
+    assert mapping[key]["basis"] == "optimal_experiment_design"
     assert mapping["Claudecodeの活用"]["basis"] == "strategy_and_implementation"
 
 

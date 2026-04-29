@@ -201,18 +201,14 @@ def price_option(
             )
         total = sum(scenario_probs.values())
         if not (0.999 <= total <= 1.001):
-            raise ValueError(
-                f"scenario_probs must sum to ~1.0, got {total:.6f}"
-            )
+            raise ValueError(f"scenario_probs must sum to ~1.0, got {total:.6f}")
         probs = scenario_probs
 
     payoffs: dict[str, float] = {
-        name: _payoff(v, option.floor_value)
-        for name, v in option.value_by_scenario.items()
+        name: _payoff(v, option.floor_value) for name, v in option.value_by_scenario.items()
     }
     pvs: dict[str, float] = {
-        name: _pv(pf, option.discount_rate, option.timing_expected)
-        for name, pf in payoffs.items()
+        name: _pv(pf, option.discount_rate, option.timing_expected) for name, pf in payoffs.items()
     }
     ev = sum(probs[name] * pvs[name] for name in names)
     sens = _sensitivity(option, probs, ev)

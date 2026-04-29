@@ -1,0 +1,48 @@
+id: hidden_markov_model
+name: Hidden Markov Model
+category: regime_switching
+tags: [hmm, latent_variable, bayesian, time_series, regime, em_algorithm, viterbi]
+problem_type: Latent discrete-state sequence modelling with observed emissions
+objective: Infer hidden state sequence and parameters maximising observation likelihood
+state_variables:
+  - "z_t: hidden discrete state ∈ {1, …, K} at time t"
+observables:
+  - "x_t: observed emission at time t (continuous or discrete)"
+parameters:
+  - "π: initial state distribution ∈ Δ^{K-1}"
+  - "A: K×K transition probability matrix (rows sum to 1)"
+  - "θ_k: emission parameters for state k (e.g. mean/variance for Gaussian)"
+constraints:
+  - "∑_k π_k = 1, π_k ≥ 0"
+  - "∑_j A_{kj} = 1, A_{kj} ≥ 0 for all k"
+uncertainty:
+  emissions: "x_t | z_t = k ~ p(x_t; θ_k) (e.g. N(μ_k, σ_k²))"
+  transitions: "P(z_t = j | z_{t-1} = k) = A_{kj}"
+equations:
+  - "Joint: p(x_{1:T}, z_{1:T}) = π_{z_1} ∏_{t=2}^T A_{z_{t-1},z_t} ∏_{t=1}^T p(x_t | z_t)"
+  - "Forward: α_t(k) = p(x_{1:t}, z_t=k) = p(x_t|z_t=k) ∑_j α_{t-1}(j) A_{jk}"
+  - "Backward: β_t(k) = p(x_{t+1:T} | z_t=k)"
+  - "Posterior: γ_t(k) = α_t(k) β_t(k) / ∑_k α_t(k) β_t(k)"
+  - "Viterbi: z* = argmax_z p(z_{1:T} | x_{1:T})"
+priors:
+  A: "Dirichlet(α=1) row prior (uniform over transitions)"
+  pi: "Dirichlet(α=1) (uniform initial state)"
+  mu_k: "N(0, 10)"
+  sigma_k: "Half-Normal(1)"
+loss_function: "Negative log-likelihood: -log p(x_{1:T}; π, A, θ)"
+solver: Baum-Welch (EM algorithm) or variational Bayes; Viterbi for decoding
+outputs:
+  - "z*_{1:T}: most probable state sequence (Viterbi)"
+  - "γ_t(k): posterior state probabilities (forward-backward)"
+  - "Â, π̂, θ̂: estimated parameters"
+  - "log p(x_{1:T}): log-likelihood"
+assumptions:
+  - "First-order Markov property: z_t ⊥ z_{1:t-2} | z_{t-1}"
+  - "Emission independence: x_t ⊥ x_{1:t-1}, x_{t+1:T} | z_t"
+  - "Stationary transition matrix A"
+evidence_needed:
+  - "Observed time series x_{1:T}"
+  - "Number of hidden states K (model selection via BIC/AIC)"
+references:
+  - "Baum, L.E. et al. (1970). A maximization technique occurring in statistical analysis of probabilistic functions of Markov chains. Ann. Math. Stat., 41(1), 164-171."
+  - "Rabiner, L.R. (1989). A tutorial on hidden Markov models. Proc. IEEE, 77(2), 257-286."

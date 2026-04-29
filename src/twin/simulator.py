@@ -110,15 +110,9 @@ def simulate(
     d = len(initial_state.state_vector)
     x0 = np.array(initial_state.state_vector, dtype=float)
 
-    F = (
-        transition_matrix
-        if transition_matrix is not None
-        else _default_transition_matrix(d, dt)
-    )
+    F = transition_matrix if transition_matrix is not None else _default_transition_matrix(d, dt)
     if F.shape != (d, d):
-        raise ValueError(
-            f"transition_matrix must be ({d}, {d}), got {F.shape}"
-        )
+        raise ValueError(f"transition_matrix must be ({d}, {d}), got {F.shape}")
 
     # Allocate trajectories: (n_samples, horizon+1, d)
     traj = np.empty((n_samples, horizon + 1, d), dtype=float)

@@ -162,18 +162,24 @@ class TestTwoWaySensitivity:
     Y_VALUES = [0.08, 0.10, 0.12]
 
     def test_output_length_is_cartesian_product(self) -> None:
-        rows = two_way_sensitivity(BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES)
+        rows = two_way_sensitivity(
+            BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES
+        )
         assert len(rows) == len(self.X_VALUES) * len(self.Y_VALUES)
 
     def test_all_combinations_present(self) -> None:
-        rows = two_way_sensitivity(BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES)
+        rows = two_way_sensitivity(
+            BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES
+        )
         pairs = {(r.x_value, r.y_value) for r in rows}
         from itertools import product
         expected = {(x, y) for x, y in product(self.X_VALUES, self.Y_VALUES)}
         assert pairs == expected
 
     def test_axis_names_propagated(self) -> None:
-        rows = two_way_sensitivity(BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES)
+        rows = two_way_sensitivity(
+            BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES
+        )
         assert all(r.x_name == "growth_rate" for r in rows)
         assert all(r.y_name == "discount_rate" for r in rows)
 
@@ -196,7 +202,9 @@ class TestTwoWaySensitivity:
 
     def test_pct_change_formula(self) -> None:
         base_ev = dcf_valuation(BASE).enterprise_value
-        rows = two_way_sensitivity(BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES)
+        rows = two_way_sensitivity(
+            BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES
+        )
         for row in rows:
             expected = (row.enterprise_value / base_ev) - 1.0
             assert row.pct_change_vs_base == pytest.approx(expected, rel=1e-12)
@@ -214,7 +222,9 @@ class TestTwoWaySensitivity:
         assert isinstance(rows[0], SensitivityGridPoint)
 
     def test_all_enterprise_values_finite(self) -> None:
-        rows = two_way_sensitivity(BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES)
+        rows = two_way_sensitivity(
+            BASE, "growth_rate", self.X_VALUES, "discount_rate", self.Y_VALUES
+        )
         assert all(math.isfinite(r.enterprise_value) for r in rows)
 
 
@@ -260,7 +270,9 @@ class TestToRowDictsOneWay:
 
 
 class TestToRowDictsTwoWay:
-    _EXPECTED_KEYS = {"x_name", "x_value", "y_name", "y_value", "enterprise_value", "pct_change_vs_base"}
+    _EXPECTED_KEYS = {
+        "x_name", "x_value", "y_name", "y_value", "enterprise_value", "pct_change_vs_base"
+    }
 
     def test_returns_list_of_dicts(self) -> None:
         rows = two_way_sensitivity(BASE, "growth_rate", [0.05, 0.10], "discount_rate", [0.08, 0.12])
