@@ -869,3 +869,394 @@ class ParsedIdeaResponse(BaseModel):
     problem_structure: ProblemStructure
     candidate_families: list[str]
     missing_information: list[str]
+
+
+# ---------------------------------------------------------------------------
+# T1500  GNSS Resilience Twin schemas
+# ---------------------------------------------------------------------------
+
+
+class FaultClass(str, Enum):
+    """4-class GNSS fault taxonomy for the Resilience Twin (T1500).
+
+    Index order [0..3] matches the fault_posterior array layout:
+        0: NOMINAL        — receiver operating correctly
+        1: MULTIPATH      — elevation-correlated range errors, no inter-sat coherence
+        2: HARDWARE_FAULT — isolated single-satellite outlier
+        3: SPOOFING       — coordinated cross-satellite bias
+    """
+
+    NOMINAL = "nominal"
+    MULTIPATH = "multipath"
+    HARDWARE_FAULT = "hardware_fault"
+    SPOOFING = "spoofing"
+
+
+class ResilienceTwinReport(BaseModel):
+    """Results of the GNSS Resilience Twin Monte Carlo simulation (T1500).
+
+    Binary detection (any fault vs nominal):
+        p_detection:   P(alarm | any fault class) at the median nominal score threshold.
+        p_false_alarm: P(alarm | nominal) at the same threshold.
+        auc:           Area under the binary ROC curve (max P_fault score vs label).
+
+    4-class classification:
+        per_class_accuracy: accuracy per fault class (FaultClass.value → float).
+        confusion_matrix:   4×4 count table [gt_class_index][pred_class_index].
+
+    Summary:
+        mean_confidence: mean max(fault_posterior) over all trial epochs.
+        n_mc:            Total Monte Carlo trials.
+        n_mc_per_class:  Trial counts per fault class (FaultClass.value → int).
+    """
+
+    p_detection: float = Field(..., ge=0.0, le=1.0)
+    p_false_alarm: float = Field(..., ge=0.0, le=1.0)
+    auc: float = Field(..., ge=0.0, le=1.0)
+    per_class_accuracy: dict[str, float] = Field(
+        ..., description="FaultClass.value → accuracy ∈ [0, 1]"
+    )
+    confusion_matrix: list[list[int]] = Field(..., description="4×4 [gt][pred] count table")
+    mean_confidence: float = Field(..., ge=0.0, le=1.0)
+    n_mc: int = Field(..., ge=1)
+    n_mc_per_class: dict[str, int] = Field(..., description="FaultClass.value → trial count")
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def confusion_matrix_4x4(self) -> ResilienceTwinReport:
+        if len(self.confusion_matrix) != 4 or any(len(r) != 4 for r in self.confusion_matrix):
+            raise ValueError("confusion_matrix must be 4×4")
+        return self
+
+
+# ---------------------------------------------------------------------------
+# T1600  Process Yield Twin schemas
+# ---------------------------------------------------------------------------
+
+
+class FactorSpec(BaseModel):
+    """Specification of one process factor (input variable).
+
+    Values are assumed to lie in [low, high] in physical units.
+    The twin normalises to [0, 1] internally for all GP computations.
+    """
+
+    name: str = Field(..., min_length=1)
+    low: float = Field(..., description="Lower bound of factor range (physical units)")
+    high: float = Field(..., description="Upper bound of factor range (physical units)")
+
+    @model_validator(mode="after")
+    def low_lt_high(self) -> "FactorSpec":
+        if not self.low < self.high:
+            raise ValueError(f"low ({self.low}) must be strictly less than high ({self.high})")
+        return self
+
+
+class ExperimentPoint(BaseModel):
+    """Single design point with optional observed yield.
+
+    factors:   Mapping of factor name → value in physical units.
+    yield_obs: Observed yield ∈ [0, 1] (e.g. fraction of conforming parts),
+               or None if the experiment has not yet been run.
+    """
+
+    factors: dict[str, float]
+    yield_obs: float | None = Field(None, ge=0.0, le=1.0)
+
+
+class DOERecommendation(BaseModel):
+    """Next experiment recommended by the Process Yield Twin.
+
+    factors:            Recommended factor settings in physical units.
+    expected_improvement: EI(x*) from the GP surrogate [yield units].
+    d_leverage:         φ(x*)ᵀ M⁻¹ φ(x*) — D-optimal leverage score.
+    fusion_score:       Weighted combination of normalised EI and d_leverage.
+    predicted_yield:    GP posterior mean at x* (in [0, 1]).
+    predicted_std:      GP posterior standard deviation at x*.
+    acquisition_mode:   "doe_explore" | "fused" | "ei_exploit"
+    n_observations:     Number of observations available when recommendation was made.
+    """
+
+    factors: dict[str, float]
+    expected_improvement: float = Field(..., ge=0.0)
+    d_leverage: float = Field(..., ge=0.0)
+    fusion_score: float = Field(..., ge=0.0)
+    predicted_yield: float = Field(..., ge=0.0, le=1.0)
+    predicted_std: float = Field(..., ge=0.0)
+    acquisition_mode: Literal["doe_explore", "fused", "ei_exploit"]
+    n_observations: int = Field(..., ge=0)
+
+
+class YieldTwinReport(BaseModel):
+    """Full optimisation report from the Process Yield Twin (T1600).
+
+    n_observations:      Number of completed experiments.
+    best_yield_observed: Maximum observed yield so far (None if no data).
+    best_factors:        Factor settings that achieved best_yield_observed.
+    surrogate_loocv_r2:  GP leave-one-out cross-validated R² (None if < 3 obs).
+    recommendation:      Next experiment to run.
+    gp_hyperparams:      Fitted GP hyperparameters:
+                           signal_var, noise_var, length_scale_<name> per factor.
+    factor_specs:        Factor definitions used for this run.
+    """
+
+    n_observations: int = Field(..., ge=0)
+    best_yield_observed: float | None = Field(None, ge=0.0, le=1.0)
+    best_factors: dict[str, float] | None = None
+    surrogate_loocv_r2: float | None = Field(
+        None, description="GP LOO cross-validated R² (None when < 3 observations)"
+    )
+    recommendation: DOERecommendation
+    gp_hyperparams: dict[str, float] = Field(
+        default_factory=dict,
+        description="signal_var, noise_var, length_scale_<factor_name>",
+    )
+    factor_specs: list[FactorSpec]
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+# ---------------------------------------------------------------------------
+# T1700  Strategy Twin schemas
+# ---------------------------------------------------------------------------
+
+
+class MoatDimension(str, Enum):
+    """Five canonical sources of competitive moat (Morningstar framework)."""
+
+    COST_ADVANTAGE = "cost_advantage"
+    SWITCHING_COSTS = "switching_costs"
+    NETWORK_EFFECTS = "network_effects"
+    INTANGIBLE_ASSETS = "intangible_assets"
+    EFFICIENT_SCALE = "efficient_scale"
+
+
+class MoatScore(BaseModel):
+    """Strength assessment for one moat dimension.
+
+    score: 0 = no moat, 0.5 = narrow moat, 1.0 = wide moat.
+    weight: relative importance of this dimension (default 1.0).
+    """
+
+    dimension: MoatDimension
+    score: float = Field(..., ge=0.0, le=1.0, description="Moat strength [0=none, 1=wide]")
+    weight: float = Field(default=1.0, gt=0.0, description="Relative importance weight")
+
+
+class BusinessUnit(BaseModel):
+    """Single business segment for SOTP valuation.
+
+    initial_fcf:           FCF₀ in consistent units (e.g. JPY millions).
+    growth_rate:           CAGR estimate (decimal; may be negative).
+    discount_rate:         Base WACC before moat adjustment (decimal).
+    terminal_growth_rate:  Gordon long-run growth (decimal; must be < discount_rate).
+    forecast_years:        Explicit DCF horizon.
+    moat_scores:           Moat dimension assessments (empty = no adjustment).
+    """
+
+    name: str = Field(..., min_length=1)
+    initial_fcf: float = Field(..., gt=0.0, description="Initial free cash flow (FCF₀)")
+    growth_rate: float = Field(..., description="Revenue/FCF CAGR estimate (decimal)")
+    discount_rate: float = Field(..., gt=0.0, description="Base WACC (decimal)")
+    terminal_growth_rate: float = Field(
+        default=0.03, description="Long-run Gordon growth rate (decimal)"
+    )
+    forecast_years: int = Field(default=5, ge=1)
+    moat_scores: list[MoatScore] = Field(default_factory=list)
+
+
+class MacroEnvironment(BaseModel):
+    """Macro-economic context for Strategy Twin.
+
+    tam: Total Addressable Market in the same unit as BusinessUnit.initial_fcf.
+    """
+
+    gdp_growth: float = Field(..., description="Real GDP growth rate (decimal, e.g. 0.02)")
+    risk_free_rate: float = Field(..., ge=0.0, description="Risk-free rate (decimal)")
+    market_risk_premium: float = Field(..., gt=0.0, description="Equity risk premium (decimal)")
+    inflation: float = Field(..., ge=0.0, description="CPI inflation rate (decimal)")
+    tam: float = Field(..., gt=0.0, description="Total Addressable Market (same unit as FCF)")
+
+
+class BLView(BaseModel):
+    """Single investor view for Black-Litterman (He-Litterman 1999).
+
+    assets:          asset_name → pick weight
+                     Absolute view: {A: 1.0}
+                     Relative view: {A: 1.0, B: -1.0}  (long A, short B)
+    expected_return: q_k — view's expected excess return (decimal).
+    uncertainty:     Ω_kk — view variance (larger = less confident).
+    """
+
+    assets: dict[str, float] = Field(..., min_length=1)
+    expected_return: float = Field(..., description="View's expected excess return (decimal)")
+    uncertainty: float = Field(..., gt=0.0, description="View variance Ω_kk")
+
+
+class CausalEdge(BaseModel):
+    """Directed edge in a linear Structural Causal Model.
+
+    coefficient: b_{effect ← cause}  — linear regression coefficient.
+    """
+
+    cause: str = Field(..., min_length=1)
+    effect: str = Field(..., min_length=1)
+    coefficient: float = Field(..., description="b_{effect ← cause}")
+
+    @model_validator(mode="after")
+    def no_self_loop(self) -> "CausalEdge":
+        if self.cause == self.effect:
+            raise ValueError("Self-loops are not allowed (cause == effect)")
+        return self
+
+
+class ViabilityCondition(BaseModel):
+    """One measurable condition the business must satisfy to reach its target EV.
+
+    gap = current_estimate − minimum_required.
+    is_met = True iff gap >= 0.
+    """
+
+    metric: str = Field(..., min_length=1, description="e.g. 'revenue_growth_rate'")
+    minimum_required: float = Field(..., description="Minimum value for this condition")
+    current_estimate: float = Field(..., description="Current estimated value")
+    gap: float = Field(..., description="current_estimate − minimum_required (≥0 means met)")
+    is_met: bool
+    explanation: str = ""
+
+
+class SOTPSegment(BaseModel):
+    """SOTP valuation result for one business unit."""
+
+    unit_name: str = Field(..., min_length=1)
+    enterprise_value: float
+    moat_adjusted_wacc: float = Field(..., description="WACC after moat reduction")
+    moat_adjusted_terminal_growth: float = Field(..., description="g_T after moat uplift")
+    moat_composite_score: float = Field(..., ge=0.0, le=1.0)
+
+
+class BLResult(BaseModel):
+    """Black-Litterman posterior return estimates per asset."""
+
+    equilibrium_returns: dict[str, float] = Field(
+        ..., description="Π = δ·Σ·w_mkt (CAPM equilibrium)"
+    )
+    posterior_returns: dict[str, float] = Field(
+        ..., description="μ_BL: posterior mean after blending views"
+    )
+    posterior_std: dict[str, float] = Field(
+        ..., description="sqrt(diag(M⁻¹)): posterior standard deviation"
+    )
+    market_weights: dict[str, float] = Field(..., description="Normalised FCF market weights")
+
+
+class CausalEffect(BaseModel):
+    """Total linear causal effect via all directed paths (ATE).
+
+    total_effect = Σ_{paths p: cause→effect} Π_{(a→b)∈p} b_{b←a}
+    """
+
+    cause: str
+    effect: str
+    total_effect: float = Field(..., description="ATE = sum of path products")
+    n_paths: int = Field(..., ge=0, description="Number of directed paths found")
+
+
+class StrategyTwinReport(BaseModel):
+    """Full output of one Strategy Twin run (T1700).
+
+    sotp_segments:        Per-unit SOTP breakdown with moat adjustments.
+    sotp_total_ev:        Sum(segment EVs) − net_debt.
+    bl_result:            Black-Litterman posterior returns per segment.
+    viability_conditions: Minimum conditions to reach the target EV.
+    implied_growth_rate:  g* from reverse DCF (NaN serialised as null if infeasible).
+    causal_effects:       All pairwise ATE in the causal graph (sorted by |ATE| desc).
+    macro:                Macro snapshot used for this run.
+    verdict:              One-line executive decision summary (Japanese).
+    """
+
+    sotp_segments: list[SOTPSegment]
+    sotp_total_ev: float
+    bl_result: BLResult
+    viability_conditions: list[ViabilityCondition]
+    implied_growth_rate: float | None = Field(
+        None, description="g* from reverse DCF; None if infeasible"
+    )
+    causal_effects: list[CausalEffect]
+    macro: MacroEnvironment
+    verdict: str
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+# ---------------------------------------------------------------------------
+# ModelForge  Traceability + Verification schemas
+# ---------------------------------------------------------------------------
+
+
+class VerificationStatus(str, Enum):
+    """Result level for one verification check or an overall report."""
+
+    PASS = "pass"
+    WARN = "warn"
+    FAIL = "fail"
+
+
+class VerificationCheck(BaseModel):
+    """Single atomic check in a ModelForge verification run."""
+
+    name: str = Field(..., min_length=1, description="Machine-readable check identifier")
+    status: VerificationStatus
+    message: str = Field(default="", description="Human-readable detail or empty on PASS")
+
+
+class VerificationReport(BaseModel):
+    """Static verification result for one model registry entry.
+
+    overall: worst status across all checks (FAIL > WARN > PASS).
+    registry_hash: SHA-256 of the YAML file content at verification time.
+    """
+
+    model_id: str = Field(..., min_length=1)
+    registry_hash: str = Field(..., description="SHA-256 hex digest of the YAML content")
+    checks: list[VerificationCheck]
+    overall: VerificationStatus
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class TraceNodeType(str, Enum):
+    """Artifact type in the ModelForge traceability graph."""
+
+    REGISTRY = "registry"          # configs/model_registry/<id>.yaml
+    VERIFICATION = "verification"  # artifacts/modelforge/<id>/verification.json
+    GENERATED_CODE = "generated_code"  # artifacts/modelforge/<id>/impl_skeleton.py
+    AUDIT_ENTRY = "audit_entry"    # .claude/audit/modelforge.jsonl line
+
+
+class TraceNode(BaseModel):
+    """Node in the ModelForge directed acyclic traceability graph.
+
+    node_id: unique stable identifier (SHA-256 prefix of content_hash + type).
+    parent_ids: edges — this node was produced from these parent nodes.
+    content_hash: SHA-256 of the artifact file at creation time.
+    """
+
+    node_id: str = Field(..., min_length=1)
+    node_type: TraceNodeType
+    model_id: str = Field(..., min_length=1)
+    artifact_path: str = Field(..., description="Relative path from project root")
+    content_hash: str = Field(..., description="SHA-256 hex digest of artifact content")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    parent_ids: list[str] = Field(default_factory=list)
+
+
+class ForgeReport(BaseModel):
+    """Full output of one ModelForge pipeline run for a single model.
+
+    Connects YAML spec → verification → skeleton code → trace nodes → audit.
+    """
+
+    model_id: str = Field(..., min_length=1)
+    registry_yaml_path: str
+    verification: VerificationReport
+    skeleton_code_path: str = Field(..., description="Path to generated impl_skeleton.py")
+    trace_node_ids: list[str] = Field(..., description="Ordered node IDs created in this run")
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

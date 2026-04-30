@@ -1,0 +1,51 @@
+# Process Yield Twin (T1600) — default configuration.
+#
+# Surrogate (Gaussian Process)
+# ----------------------------
+# gp_n_restarts:   Number of random restarts for log-marginal-likelihood
+#                  optimisation.  More restarts → better hyperparameters
+#                  but slower fitting.  Recommended: 5–10.
+# ei_xi:           Exploration bonus ξ ≥ 0 in Expected Improvement.
+#                  Higher ξ → more exploration (less greedy exploitation).
+#
+# DOE (D-Optimal)
+# ---------------
+# n_candidates:    Number of Latin Hypercube candidate points evaluated
+#                  per recommendation cycle.  2000 gives good coverage
+#                  up to ~10 factors; increase for higher dimensions.
+# doe_lambda_reg:  Regularisation λ added to the Fisher information matrix
+#                  M = ΦᵀΦ + λI to keep it invertible when n < p.
+#
+# Acquisition fusion
+# ------------------
+# The fusion weight α(n) linearly ramps from 0 (pure D-Optimal exploration)
+# to 1 (pure EI exploitation) as n increases from n_min to 2·n_min, where:
+#   n_min = max(2·n_factors + 1, 5)
+#
+# Acquisition modes (reported in DOERecommendation.acquisition_mode):
+#   "doe_explore"  — n < n_min
+#   "fused"        — n_min ≤ n < 2·n_min
+#   "ei_exploit"   — n ≥ 2·n_min
+#
+# Example factor specs (override per project)
+# -------------------------------------------
+# factor_specs:
+#   - name: temperature
+#     low: 150.0
+#     high: 250.0
+#   - name: pressure
+#     low: 1.0
+#     high: 5.0
+#   - name: feed_rate
+#     low: 10.0
+#     high: 50.0
+
+surrogate:
+  gp_n_restarts: 5
+  ei_xi: 0.01
+
+doe:
+  n_candidates: 2000
+  doe_lambda_reg: 1.0e-6
+
+random_seed: 42

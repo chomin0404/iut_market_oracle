@@ -14,6 +14,8 @@
       "Write(reports/**)",
       "Write(data/processed/**)",
       "Write(notebooks/**)",
+      "Write(artifacts/**)",
+      "Bash(uv run python -m src.models*)",
       "Bash(pytest -q)",
       "Bash(ruff check .)",
       "Bash(ruff format .)",
@@ -64,6 +66,17 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.sh",
             "statusMessage": "Checking protected files and artifact write policy"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Edit(configs/model_registry/*.yaml)|Write(configs/model_registry/*.yaml)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/on-registry-change.sh",
+            "statusMessage": "ModelForge: auto-verify + forge after registry YAML change"
           }
         ]
       }

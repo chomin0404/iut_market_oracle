@@ -1,0 +1,68 @@
+# GNSS Resilience Twin (T1500) — default simulation parameters.
+#
+# MC simulation
+# -------------
+# n_mc:         Total Monte Carlo trials (cycles through 4 fault classes).
+# n_epochs:     Time steps per trial (one Doppler measurement epoch per step).
+# n_sats:       Number of visible satellites (Fibonacci lattice geometry).
+# random_seed:  RNG seed for full reproducibility.
+#
+# Measurement model
+# -----------------
+# doppler_noise_std: Genuine Doppler noise 1-σ [Hz].
+# spoof_bias_std:    Common meaconing bias 1-σ [Hz].
+# spoof_diff_std:    Per-satellite differential spoofing noise 1-σ [Hz].
+# graph_sigma:       Gaussian kernel bandwidth σ for similarity graph [Hz].
+# dirichlet_alpha:   Symmetric Dirichlet concentration for attack window.
+#
+# Layer thresholds
+# ----------------
+# gmm_fault_prior:   P(satellite is faulty) GMM prior weight.
+# gmm_fault_scale:   Fault component noise inflation factor (σ₁ = scale·σ₀).
+# imm_q0:            Nominal mode process noise [Hz²/epoch].
+# imm_q1:            Multipath mode process noise [Hz²/epoch].
+# imm_q2:            Spoofing mode process noise base [Hz²/epoch].
+# imm_spoof_rho:     Clock drift inflation ρ for spoofing mode Q₂.
+# fel_h_thresh:      Entropy alert threshold [nats]  (default 0.8·ln 4).
+# fel_kl_thresh:     KL divergence alert threshold [nats].
+# fel_grad_thresh:   Entropy gradient alert threshold |ΔH| [nats/epoch].
+
+simulation:
+  n_mc: 400
+  n_epochs: 80
+  n_sats: 6
+  random_seed: 42
+
+measurement:
+  doppler_noise_std: 0.30
+  spoof_bias_std: 2.50
+  spoof_diff_std: 0.80
+  graph_sigma: 1.50
+  dirichlet_alpha: 2.0
+
+gmm_raim:
+  fault_prior: 0.05
+  fault_scale: 5.0
+  fault_threshold: 0.5
+
+imm_kalman:
+  q0: 0.001
+  q1: 0.010
+  q2: 0.005
+  spoof_rho: 3.0
+  p_init: 1.0
+  transition:
+    - [0.95, 0.03, 0.02]
+    - [0.10, 0.85, 0.05]
+    - [0.05, 0.05, 0.90]
+
+fusion:
+  spoof_fiedler_weight: 0.50
+  spoof_rmt_weight: 0.30
+  mp_elev_weight: 0.40
+
+fault_entropy:
+  prior: [0.97, 0.01, 0.01, 0.01]
+  h_thresh: 1.109   # 0.8 * ln(4) ≈ 1.109 nats
+  kl_thresh: 1.0
+  grad_thresh: 0.3

@@ -1,0 +1,70 @@
+# Strategy Twin (T1700) — default configuration.
+#
+# Moat Adjustments
+# ----------------
+# max_wacc_reduction:  Maximum WACC reduction from moat score (250 bps).
+# max_growth_uplift:   Maximum terminal growth uplift from moat score (150 bps).
+# min_wacc_floor:      Minimum WACC after adjustment (4%).
+# min_spread:          Minimum spread between WACC and terminal growth (50 bps).
+#
+# Black-Litterman
+# ---------------
+# delta:  Risk-aversion coefficient (He-Litterman default: 2.5).
+# tau:    Confidence scale on equilibrium prior (default: 0.05).
+# rho:    Uniform off-diagonal correlation in covariance matrix (default: 0.30).
+#
+# Viability (Reverse DCF)
+# -----------------------
+# bisect_low:  Lower bound on implied growth rate search (-50%).
+# bisect_high: Upper bound on implied growth rate search (+80%).
+#
+# Causal SCM
+# ----------
+# max_path_depth: Maximum DFS depth for path enumeration (default: 20).
+
+moat:
+  max_wacc_reduction: 0.025
+  max_growth_uplift: 0.015
+  min_wacc_floor: 0.04
+  min_spread: 0.005
+
+black_litterman:
+  delta: 2.5
+  tau: 0.05
+  rho: 0.30
+
+viability:
+  bisect_low: -0.50
+  bisect_high: 0.80
+
+causal:
+  max_path_depth: 20
+
+# Example business unit configuration (override per project)
+# ----------------------------------------------------------
+# business_units:
+#   - name: core_product
+#     initial_fcf: 100000
+#     growth_rate: 0.15
+#     discount_rate: 0.10
+#     terminal_growth_rate: 0.03
+#     forecast_years: 5
+#     moat_scores:
+#       - dimension: switching_costs
+#         score: 0.8
+#         weight: 1.5
+#       - dimension: network_effects
+#         score: 0.6
+#         weight: 1.0
+#
+# macro:
+#   gdp_growth: 0.025
+#   risk_free_rate: 0.04
+#   market_risk_premium: 0.055
+#   inflation: 0.025
+#   tam: 5000000
+#
+# target_ev: 800000
+# net_debt: 50000
+# current_market_share: 0.08
+# current_fcf_margin: 0.18

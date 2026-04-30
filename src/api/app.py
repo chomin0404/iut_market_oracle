@@ -26,12 +26,14 @@ from api.routers import (
     entropy,
     exit_,
     experiments,
+    forge,
     gnss,
     graph,
     ideas,
     matroid,
     model,
     report,
+    strategy,
     twin,
     valuation,
 )
@@ -63,6 +65,8 @@ app.include_router(gnss.router, prefix="/gnss", tags=["gnss"])
 app.include_router(matroid.router, prefix="/matroid", tags=["matroid"])
 app.include_router(model.router, prefix="/model", tags=["model"])
 app.include_router(ideas.router, prefix="/ideas", tags=["ideas"])
+app.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
+app.include_router(forge.router, prefix="/forge", tags=["forge"])
 
 # ---------------------------------------------------------------------------
 # Custom OpenAPI: inject response-schema examples for schemas that cannot
