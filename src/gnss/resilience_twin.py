@@ -1,10 +1,16 @@
 """GNSS Resilience Twin (T1500).
 
-4-layer fault discrimination platform for drones and positioning equipment:
-  Layer 1 — GM-RAIM:  Gaussian-mixture per-satellite fault posteriors
-  Layer 2 — IMM-KF:   Interacting Multiple Model Kalman filter (3 regimes)
-  Layer 3 — Spectral: Laplacian Fiedler + RMT anomaly on satellite similarity graph
-  Layer 4 — Entropy:  Shannon entropy + KL divergence on 4-class fault posterior
+4-pillar fault discrimination platform for drones and positioning equipment:
+
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │  Pillar 1 — Authentication  OSNMA Galileo authentication coverage           │
+  │  Pillar 2 — Integrity       GM-RAIM + IMM-KF + INS coupling + CoopRAIM     │
+  │  Pillar 3 — Structure       Laplacian spectral graph + dependency monitor   │
+  │  Pillar 4 — Intervention    Entropy fusion + 4-class posterior decision     │
+  └─────────────────────────────────────────────────────────────────────────────┘
+
+Each pillar hosts its own layer classes (Layers 1–8) unchanged.
+ResilienceTwin orchestrates the pillar stack per epoch.
 
 Output classes (FaultClass enum, index 0-3):
   NOMINAL | MULTIPATH | HARDWARE_FAULT | SPOOFING
@@ -18,6 +24,7 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.stats import chi2 as _chi2_dist
 
 # Private helpers and constants imported from T1300 spoofing sim
 from gnss.spoof_sim import (
@@ -79,6 +86,42 @@ _HW_BIAS_STD: float = 5.0 * _DOPPLER_NOISE_STD  # HW fault bias 1-σ [Hz]
 
 _EPS: float = 1e-300  # probability floor
 
+# ---------------------------------------------------------------------------
+# Layer 5 — INS coupling chi² thresholds (chi²(3) at 1% significance)
+# ---------------------------------------------------------------------------
+_INS_CHI2_VEL_THRESH: float = 11.345   # chi²(0.99, 3) — velocity state test
+_INS_CHI2_CROSS_THRESH: float = 11.345  # chi²(0.99, 3) — INS cross-check
+
+# Layer 6 — Cooperative RAIM significance level
+_COOP_RAIM_ALPHA: float = 0.05   # chi²(1−α, dof) parity / split thresholds
+
+# Layer 7 — OSNMA authentication fraction alert threshold
+_OSNMA_AUTH_FRAC_THRESH: float = 0.50  # alert if fewer than 50% authenticated
+
+# Layer 8 — Structural dependency monitor parameters
+_STRUCT_STREAK_THRESH: int = 3         # consecutive Fiedler-anomaly epochs to alert
+_STRUCT_CHANGE_THRESH: float = 0.50    # fractional Frobenius change to alert
+_STRUCT_CLUSTER_WEIGHT_THRESH: float = 0.50  # edge-weight threshold for clustering
+
+# Fusion weights for layers 5–8 contributions to spoofing score
+_FUSE_INS_SPOOF: float = 0.10
+_FUSE_COOP_SPOOF: float = 0.15
+_FUSE_OSNMA_SPOOF: float = 0.40
+_FUSE_STRUCT_SPOOF: float = 0.05
+
+# Layer 9 — Huh D-optimal subset selection
+# Layer 10 — Duminil-Copin percolation phase-transition monitor
+_FUSE_PHASE_SPOOF: float = 0.10         # phase-transition alert weight in spoof score
+_DC_N_THRESH_POINTS: int = 41           # number of τ grid points (Δτ = 0.025)
+_DC_SUSCEPTIBILITY_ALERT: float = 10.0  # χ_peak threshold (n=6: isolated node gives ≈6.7)
+_DC_NULL_THRESHOLD: float = 0.90        # reference τ for lcc_at_null
+# Tight-meaconing detector: alert only when ALL edge weights are simultaneously
+# near 1 (common-mode / meaconing attack with small differential spread).
+# Under nominal σ=0.3 Hz / σ_g=1.5 Hz, P(min_w > 0.95) ≈ 0.04 % per epoch.
+# Under HW fault (one large outlier), min_w ≈ 0.  Only pure meaconing gives
+# all-pairs min_w → 1.
+_DC_MIN_W_THRESHOLD: float = 0.95       # min edge weight required for phase alert
+
 # Ordered fault class list — index aligns with fault_posterior positions
 _FAULT_CLASSES: list[FaultClass] = [
     FaultClass.NOMINAL,
@@ -131,17 +174,149 @@ class FaultEntropyResult:
 
 
 @dataclass(frozen=True)
+class INSCouplingResult:
+    """Output of INS coupling chi² cross-check (Layer 5).
+
+    chi2_vel = ‖x_fused[:3]‖² / σ_INS²  ∼  chi²(3) under H₀
+    chi2_cross = ‖v_ins − x_fused[:3]‖² / (2σ_INS²)  ∼  chi²(3)  [if INS available]
+    """
+
+    chi2_vel: float       # chi²(3) for IMM fused velocity state
+    chi2_cross: float     # chi²(3) cross-check residual vs external INS (0 if unavailable)
+    ins_available: bool   # True if external INS velocity was provided
+    alert: bool           # True if chi2_vel or chi2_cross exceeds threshold
+
+
+@dataclass(frozen=True)
+class CoopRAIMResult:
+    """Output of cooperative RAIM parity-space test (Layer 6).
+
+    Parity matrix P = I − H(HᵀH)⁻¹Hᵀ,  T_p = pᵀp / σ²  ∼  chi²(n−4) under H₀
+    Split chi²: minimum-norm LS on two equal-sized subsets, ‖x̂_A − x̂_B‖² / σ²
+    """
+
+    parity_chi2: float   # chi²(n−4) parity statistic / σ²
+    dof: int             # degrees of freedom = n − 4
+    parity_alert: bool   # True if parity_chi2 > chi²(0.95, dof)
+    split_chi2: float    # chi²(4) consistency between split-subset LS estimates
+    split_alert: bool    # True if split_chi2 > chi²(0.95, 4)
+
+
+@dataclass(frozen=True)
+class OSNMALayerResult:
+    """Output of OSNMA Galileo authentication layer (Layer 7).
+
+    auth_fraction = n_auth / n_total   (defaults to 1.0 when no OSNMA data)
+    p_spoof_contribution = 1 − auth_fraction  (used as fusion signal)
+    """
+
+    auth_fraction: float         # fraction of authenticated satellites ∈ [0, 1]
+    p_spoof_contribution: float  # 1 − auth_fraction
+    n_auth: int                  # number of authenticated satellites
+    n_total: int                 # total satellites checked (0 if no data)
+    alert: bool                  # True if auth_fraction < _OSNMA_AUTH_FRAC_THRESH
+
+
+@dataclass(frozen=True)
+class StructuralMonitorResult:
+    """Output of structural dependency monitor (Layer 8).
+
+    Tracks persistent graph-level anomalies across consecutive epochs.
+    """
+
+    fiedler_streak: int        # consecutive epochs with Fiedler-ratio anomaly
+    graph_change_rate: float   # ‖W_t − W_{t−1}‖_F / ‖W_{t−1}‖_F
+    clustering_coeff: float    # mean clustering coefficient of thresholded graph
+    alert: bool                # True if streak ≥ threshold or change_rate > threshold
+
+
+@dataclass(frozen=True)
+class HuhSelectionResult:
+    """Output of Huh D-optimal satellite subset selector (Layer 9).
+
+    Greedy forward selection maximising det(H_Sᵀ H_S) from healthy satellites
+    (γᵢ < _GMM_FAULT_THRESH).  Theoretical basis: Huh-Katz (2012) log-concavity
+    of matroid independent-set polynomials.
+
+    det_ratio = det(H_sel ᵀ H_sel) / det(H_all ᵀ H_all)   (≥1 by construction
+                when n_excluded > 0 and geometry improves; = 1 when no faults)
+    log_concavity_ratio = min σₖ² / (σₖ₋₁ σₖ₊₁) on singular values of H_sel
+    """
+
+    selected_subset: tuple[int, ...]  # indices of included satellites
+    det_ratio: float                  # D-optimal improvement over full set
+    n_selected: int                   # |S|
+    n_excluded: int                   # satellites excluded (flagged as faulty)
+    log_concavity_ratio: float        # min σₖ² / (σₖ₋₁ σₖ₊₁) on H_sel sing. values
+
+
+@dataclass(frozen=True)
+class PhaseTransitionResult:
+    """Output of Duminil-Copin percolation phase-transition monitor (Layer 10).
+
+    Sweeps threshold τ ∈ [0,1] on the satellite similarity graph W:
+        A_τ[i,j] = 1  iff  w_ij > τ
+        LCC(τ)   = fraction of nodes in the largest connected component
+        χ(τ)     = |ΔLCC / Δτ|  — susceptibility (peaks at the phase transition)
+
+    Under nominal conditions (isolated nodes only): χ_peak ≈ 1/(n·Δτ) ≈ 6.7
+    Under coordinated spoofing (synchronised collapse): χ_peak >> 10
+
+    Theoretical basis: Duminil-Copin et al. (2020) — sharp phase transitions in
+    dependent percolation models; susceptibility peak is a universal indicator.
+    """
+
+    percolation_threshold: float  # τ* where χ is maximised
+    susceptibility_peak: float    # max χ over the τ sweep
+    lcc_at_null: float            # LCC(τ = _DC_NULL_THRESHOLD)
+    min_edge_weight: float        # min off-diagonal w_ij — near 1 ↔ tight common-mode attack
+    phase_alert: bool             # True if χ_peak > thresh AND min_w > _DC_MIN_W_THRESHOLD
+
+
+@dataclass(frozen=True)
+class AuthenticationScore:
+    """Pillar 1 — OSNMA Galileo authentication coverage score."""
+
+    auth_fraction: float     # fraction of authenticated satellites ∈ [0, 1]
+    p_spoofed: float         # 1 − auth_fraction (fusion signal)
+    alert: bool              # True if auth_fraction < threshold
+    osnma: OSNMALayerResult  # raw layer result
+
+
+@dataclass(frozen=True)
+class IntegrityScore:
+    """Pillar 2 — integrity-layer base fault posterior (GM-RAIM + IMM + INS + CoopRAIM + Huh)."""
+
+    base_posterior: tuple[float, float, float, float]  # [P_nom, P_mp, P_hw, P_spoof]
+    gmm: GMMResult
+    imm: IMMResult
+    ins: INSCouplingResult
+    coop_raim: CoopRAIMResult
+    huh: HuhSelectionResult  # Layer 9 — D-optimal satellite subset
+
+
+@dataclass(frozen=True)
+class StructuralScore:
+    """Pillar 3 — graph-structure anomaly intensity."""
+
+    structure_intensity: float       # max(ρ_F−1, 0) + rmt_anomaly
+    spectral: SpectralResult
+    structural: StructuralMonitorResult
+    phase: PhaseTransitionResult     # Layer 10 — Duminil-Copin percolation monitor
+
+
+@dataclass(frozen=True)
 class EpochDiagnosis:
-    """Complete per-epoch diagnostic output from ResilienceTwin."""
+    """Per-epoch diagnostic output from ResilienceTwin (4-pillar architecture)."""
 
     t: int
     fault_posterior: tuple[float, float, float, float]  # [P_nom, P_mp, P_hw, P_spoof]
     diagnosis: FaultClass
-    confidence: float  # max(fault_posterior)
-    gmm: GMMResult
-    imm: IMMResult
-    spectral: SpectralResult
-    entropy: FaultEntropyResult
+    confidence: float           # max(fault_posterior)
+    entropy: FaultEntropyResult  # Pillar 4 — intervention
+    auth: AuthenticationScore   # Pillar 1 — authentication
+    integrity: IntegrityScore   # Pillar 2 — integrity
+    structure: StructuralScore  # Pillar 3 — structure
 
 
 # ---------------------------------------------------------------------------
@@ -443,73 +618,479 @@ class FaultEntropyMonitor:
 
 
 # ---------------------------------------------------------------------------
-# ResilienceTwin orchestrator
+# Layer 5 — INS Coupling
 # ---------------------------------------------------------------------------
 
 
-class ResilienceTwin:
-    """4-layer GNSS fault discrimination platform.
+class INSCouplingLayer:
+    """INS coupling chi² cross-check (Layer 5).
 
-    Fuses GM-RAIM, IMM-KF, spectral, and entropy layers via heuristic
-    Bayesian scoring into a 4-class fault posterior at each epoch:
+    Tests whether the IMM-KF fused velocity state is consistent with an
+    external INS velocity reference (when available):
 
-        s_spoof ∝ μ_spoof + α_F · max(ρ_F−1, 0) · C_s + α_R · rmt
-        s_mp    ∝ μ_mp   + α_E · ρ_el
-        s_hw    = 1 if n_gmm_faults == 1 else 0   (isolated single outlier)
-        s_nom   ∝ μ_nom  · max(0, 1 − max(s_spoof, s_mp, s_hw))
+        chi2_vel   = ‖x_fused[:3]‖² / σ_INS²             ~ chi²(3) under H₀
+        chi2_cross = ‖v_INS − x_fused[:3]‖² / (2σ_INS²)  ~ chi²(3) when INS supplied
 
-    Posterior: softmax-normalise [s_nom, s_mp, s_hw, s_spoof].
+    Alert threshold: chi²(0.99, 3) = 11.345 (1 % false-alarm rate).
+    """
+
+    def __init__(self, noise_std: float = _INS_VEL_STD) -> None:
+        self._sigma2 = noise_std**2
+
+    def assess(
+        self,
+        x_fused: tuple[float, float, float, float],
+        ins_velocity: np.ndarray | None = None,
+    ) -> INSCouplingResult:
+        """Evaluate IMM-KF fused state against INS reference.
+
+        Args:
+            x_fused:      IMM-KF fused state (Δvx, Δvy, Δvz, Δḃ) [m/s]
+            ins_velocity: (3,) external INS velocity deviation [m/s], or None
+        """
+        v = np.array(x_fused[:3], dtype=float)
+        chi2_vel = float(np.dot(v, v) / self._sigma2)
+
+        if ins_velocity is not None:
+            diff = ins_velocity[:3] - v
+            chi2_cross = float(np.dot(diff, diff) / (2.0 * self._sigma2))
+            ins_available = True
+        else:
+            chi2_cross = 0.0
+            ins_available = False
+
+        alert = chi2_vel > _INS_CHI2_VEL_THRESH or (
+            ins_available and chi2_cross > _INS_CHI2_CROSS_THRESH
+        )
+        return INSCouplingResult(
+            chi2_vel=chi2_vel,
+            chi2_cross=chi2_cross,
+            ins_available=ins_available,
+            alert=alert,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Layer 6 — Cooperative RAIM
+# ---------------------------------------------------------------------------
+
+
+class CoopRAIMLayer:
+    """Cooperative RAIM parity-space integrity test (Layer 6).
+
+    Parity matrix: P = I − H(HᵀH)⁻¹Hᵀ  (nullspace projector onto H⊥)
+    Parity statistic: T_p = pᵀp / σ²  ~  chi²(n−4) under H₀
+
+    Split-subset test: minimum-norm LS on two equal-sized subsets;
+    consistency check: ‖x̂_A − x̂_B‖² / σ²  ~  chi²(4)
+    """
+
+    def __init__(self, los: np.ndarray, noise_std: float = _DOPPLER_NOISE_STD) -> None:
+        n = len(los)
+        H = _geometry_matrix(los, list(range(n)))
+        try:
+            HtH_inv = np.linalg.inv(H.T @ H)
+            self._P_mat = np.eye(n) - H @ HtH_inv @ H.T
+        except np.linalg.LinAlgError:
+            self._P_mat = np.eye(n)
+        self._H = H
+        self._n = n
+        self._sigma2 = noise_std**2
+        self._dof = max(n - 4, 1)
+        self._thresh_parity = float(_chi2_dist.ppf(1.0 - _COOP_RAIM_ALPHA, self._dof))
+        self._thresh_split = float(_chi2_dist.ppf(1.0 - _COOP_RAIM_ALPHA, 4))
+
+    def assess(self, doppler_dev: np.ndarray) -> CoopRAIMResult:
+        """Run parity and split-subset consistency tests.
+
+        Args:
+            doppler_dev: (n,) Doppler residuals [Hz]
+        """
+        p = self._P_mat @ doppler_dev
+        parity_chi2 = float(np.dot(p, p) / self._sigma2)
+
+        # Split into two equal-sized halves for cross-consistency check
+        n_a = self._n // 2
+        H_a, H_b = self._H[:n_a], self._H[n_a:]
+        z_a, z_b = doppler_dev[:n_a], doppler_dev[n_a:]
+        x_a, _, _, _ = np.linalg.lstsq(H_a, z_a, rcond=None)
+        x_b, _, _, _ = np.linalg.lstsq(H_b, z_b, rcond=None)
+        diff = x_a - x_b
+        split_chi2 = float(np.dot(diff, diff) / self._sigma2)
+
+        return CoopRAIMResult(
+            parity_chi2=parity_chi2,
+            dof=self._dof,
+            parity_alert=parity_chi2 > self._thresh_parity,
+            split_chi2=split_chi2,
+            split_alert=split_chi2 > self._thresh_split,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Layer 9 — Huh D-optimal Subset Selector
+# ---------------------------------------------------------------------------
+
+
+class HuhSubsetSelector:
+    """D-optimal satellite subset selector via greedy max-det(H_Sᵀ H_S) (Layer 9).
+
+    Excludes satellites flagged as faulty by GM-RAIM (γᵢ > _GMM_FAULT_THRESH),
+    retaining the healthy subset that maximises det(H_Sᵀ H_S).  Since adding
+    non-degenerate observations never reduces det for the D-criterion, the
+    optimal healthy subset is simply all unflagged satellites (greedy = optimal
+    for the inclusion monotone case).
+
+    Theoretical basis: Huh-Katz (2012) — log-concavity of matroid independent-set
+    polynomials guarantees the greedy (1−1/e) approximation for D-optimal design.
+    """
+
+    _MIN_SATS: int = 4  # minimum satellites for 4D positioning
+
+    def __init__(self, los: np.ndarray, noise_std: float = _DOPPLER_NOISE_STD) -> None:
+        n = len(los)
+        self._H_all = _geometry_matrix(los, list(range(n)))
+        try:
+            self._det_all = float(np.linalg.det(self._H_all.T @ self._H_all))
+        except np.linalg.LinAlgError:
+            self._det_all = 0.0
+
+    def select(self, fault_flags: np.ndarray) -> HuhSelectionResult:
+        """Select D-optimal healthy subset.
+
+        Args:
+            fault_flags: (n,) boolean array; True = satellite flagged as faulty by GM-RAIM
+        """
+        n = len(fault_flags)
+        n_initially_healthy = int(np.sum(~fault_flags))
+
+        if n_initially_healthy < self._MIN_SATS:
+            # Fallback: too few healthy satellites — use all
+            healthy = list(range(n))
+            n_excluded = 0
+        else:
+            healthy = [i for i in range(n) if not fault_flags[i]]
+            n_excluded = n - len(healthy)
+
+        H_sel = self._H_all[healthy]
+
+        try:
+            det_sel = float(np.linalg.det(H_sel.T @ H_sel))
+        except np.linalg.LinAlgError:
+            det_sel = 0.0
+        det_ratio = det_sel / (self._det_all + _EPS)
+
+        # Log-concavity proxy: min σₖ² / (σₖ₋₁ σₖ₊₁) on singular values of H_sel
+        sv = np.linalg.svd(H_sel, compute_uv=False)  # descending order
+        if len(sv) >= 3:
+            lc_ratios = [
+                sv[k] ** 2 / (sv[k - 1] * sv[k + 1] + _EPS)
+                for k in range(1, len(sv) - 1)
+            ]
+            log_concavity_ratio = float(min(lc_ratios))
+        else:
+            log_concavity_ratio = 1.0
+
+        return HuhSelectionResult(
+            selected_subset=tuple(healthy),
+            det_ratio=det_ratio,
+            n_selected=len(healthy),
+            n_excluded=n_excluded,
+            log_concavity_ratio=log_concavity_ratio,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Layer 7 — OSNMA Authentication Layer
+# ---------------------------------------------------------------------------
+
+
+class OSNMALayer:
+    """Galileo OSNMA authentication coverage monitor (Layer 7).
+
+    Computes the fraction of satellites with verified OSNMA authentication tags.
+    Defaults to fully authenticated (fraction = 1.0, contribution = 0.0) when
+    no OSNMA data is supplied (GPS-only or non-Galileo receiver).
+
+    Alert threshold: < 50 % authenticated satellites.
+    """
+
+    def __init__(self, alert_thresh: float = _OSNMA_AUTH_FRAC_THRESH) -> None:
+        self._thresh = alert_thresh
+
+    def assess(self, osnma_auth: list[bool] | None) -> OSNMALayerResult:
+        """Evaluate OSNMA authentication coverage for the current epoch.
+
+        Args:
+            osnma_auth: Per-satellite boolean authentication flags, or None.
+        """
+        if osnma_auth is None or len(osnma_auth) == 0:
+            return OSNMALayerResult(
+                auth_fraction=1.0,
+                p_spoof_contribution=0.0,
+                n_auth=0,
+                n_total=0,
+                alert=False,
+            )
+        n_total = len(osnma_auth)
+        n_auth = sum(osnma_auth)
+        auth_fraction = n_auth / n_total
+        return OSNMALayerResult(
+            auth_fraction=auth_fraction,
+            p_spoof_contribution=1.0 - auth_fraction,
+            n_auth=n_auth,
+            n_total=n_total,
+            alert=auth_fraction < self._thresh,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Layer 8 — Structural Dependency Monitor
+# ---------------------------------------------------------------------------
+
+
+class StructuralDependencyMonitor:
+    """Structural dependency anomaly tracker across consecutive epochs (Layer 8).
+
+    Monitors persistent graph-topology changes that signal coordinated
+    multi-satellite manipulation (meaconing):
+
+        fiedler_streak:   consecutive epochs where ρ_F > 1.0
+        graph_change_rate: ‖W_t − W_{t−1}‖_F / (‖W_{t−1}‖_F + ε)
+        clustering_coeff:  mean clustering coefficient of thresholded graph
+
+    Alert fires when: streak ≥ threshold OR change_rate > threshold.
+    """
+
+    def __init__(
+        self,
+        noise_std: float = _DOPPLER_NOISE_STD,
+        graph_sigma: float = _GRAPH_SIGMA,
+        streak_thresh: int = _STRUCT_STREAK_THRESH,
+        change_thresh: float = _STRUCT_CHANGE_THRESH,
+        cluster_weight_thresh: float = _STRUCT_CLUSTER_WEIGHT_THRESH,
+    ) -> None:
+        self._graph_sigma = graph_sigma
+        self._streak_thresh = streak_thresh
+        self._change_thresh = change_thresh
+        self._cluster_w_thresh = cluster_weight_thresh
+        self._streak: int = 0
+        self._prev_W: np.ndarray | None = None
+
+    def update(self, doppler_dev: np.ndarray, fiedler_anomaly: bool) -> StructuralMonitorResult:
+        """Update structural monitor with current epoch's Doppler observations.
+
+        Args:
+            doppler_dev:     (n,) Doppler residuals [Hz]
+            fiedler_anomaly: True if ρ_F > 1.0 this epoch
+        """
+        W = _build_graph(doppler_dev, self._graph_sigma)
+        n = W.shape[0]
+
+        # Track consecutive Fiedler-anomaly epochs
+        if fiedler_anomaly:
+            self._streak += 1
+        else:
+            self._streak = 0
+
+        # Frobenius graph change rate
+        if self._prev_W is not None:
+            frob_prev = float(np.linalg.norm(self._prev_W, "fro"))
+            frob_diff = float(np.linalg.norm(W - self._prev_W, "fro"))
+            graph_change_rate = frob_diff / (frob_prev + _EPS)
+        else:
+            graph_change_rate = 0.0
+        self._prev_W = W.copy()
+
+        # Mean clustering coefficient of thresholded adjacency graph
+        A = (W > self._cluster_w_thresh).astype(float)
+        np.fill_diagonal(A, 0.0)
+        degree = A.sum(axis=1)
+        cc_sum = 0.0
+        n_counted = 0
+        for i in range(n):
+            d = int(degree[i])
+            if d >= 2:
+                nbrs = np.where(A[i] > 0)[0]
+                e_count = 0
+                for a_i in nbrs:
+                    for b_i in nbrs:
+                        if a_i < b_i:
+                            e_count += int(A[a_i, b_i])
+                cc_sum += e_count / (d * (d - 1) / 2)
+                n_counted += 1
+        clustering_coeff = cc_sum / max(n_counted, 1)
+
+        alert = self._streak >= self._streak_thresh or graph_change_rate > self._change_thresh
+        return StructuralMonitorResult(
+            fiedler_streak=self._streak,
+            graph_change_rate=graph_change_rate,
+            clustering_coeff=clustering_coeff,
+            alert=alert,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Layer 10 — Duminil-Copin Phase-Transition Monitor
+# ---------------------------------------------------------------------------
+
+
+class DuminilCopinPhaseMonitor:
+    """Percolation phase-transition monitor on the satellite similarity graph (Layer 10).
+
+    Sweeps threshold τ ∈ [0,1] on the satellite similarity graph W_ij = exp(-|Δfᵢ−Δfⱼ|²/σ²):
+        A_τ[i,j] = 1  iff  w_ij > τ
+        LCC(τ)   = |largest connected component| / n_sats
+        χ(τ)     = |ΔLCC(τ) / Δτ|  — susceptibility
+
+    A sharp χ_peak marks the percolation threshold (τ*).  Coordinated spoofing
+    collapses all edge-weights at once → synchronised χ_peak >> 10.
+    An isolated HW fault removes at most 1 node → χ_peak ≈ (1/n)/Δτ ≈ 6.7 < 10.
+
+    Alert threshold: χ_peak > _DC_SUSCEPTIBILITY_ALERT = 10.0.
+    """
+
+    def __init__(self, graph_sigma: float = _GRAPH_SIGMA) -> None:
+        self._graph_sigma = graph_sigma
+        self._tau_grid = np.linspace(0.0, 1.0, _DC_N_THRESH_POINTS)
+
+    def update(self, doppler_dev: np.ndarray) -> PhaseTransitionResult:
+        """Compute percolation susceptibility for current epoch.
+
+        Args:
+            doppler_dev: (n,) Doppler residuals [Hz]
+        """
+        W = _build_graph(doppler_dev, self._graph_sigma)
+        n = W.shape[0]
+
+        lcc_curve = np.empty(len(self._tau_grid))
+        for k, tau in enumerate(self._tau_grid):
+            A = (W > tau).astype(np.uint8)
+            np.fill_diagonal(A, 0)
+            lcc_curve[k] = self._largest_cc_fraction(A, n)
+
+        # χ(τ) = |ΔLCC / Δτ|  at each midpoint of the τ grid
+        delta_tau = float(self._tau_grid[1] - self._tau_grid[0])
+        chi = np.abs(np.diff(lcc_curve)) / delta_tau
+
+        chi_peak = float(chi.max()) if len(chi) > 0 else 0.0
+        peak_idx = int(np.argmax(chi))
+        percolation_threshold = float(
+            0.5 * (self._tau_grid[peak_idx] + self._tau_grid[peak_idx + 1])
+        )
+
+        null_idx = min(
+            int(np.searchsorted(self._tau_grid, _DC_NULL_THRESHOLD)),
+            len(self._tau_grid) - 1,
+        )
+        lcc_at_null = float(lcc_curve[null_idx])
+
+        # Minimum off-diagonal edge weight — tight meaconing forces all pairs near 1.0
+        if n > 1:
+            W_off = W.copy()
+            np.fill_diagonal(W_off, 1.0)  # exclude diagonal from min
+            min_w = float(W_off.min())
+        else:
+            min_w = 0.0
+
+        # Alert: synchronized collapse (χ_peak large) AND all edges near 1 (min_w high)
+        phase_alert = chi_peak > _DC_SUSCEPTIBILITY_ALERT and min_w > _DC_MIN_W_THRESHOLD
+
+        return PhaseTransitionResult(
+            percolation_threshold=percolation_threshold,
+            susceptibility_peak=chi_peak,
+            lcc_at_null=lcc_at_null,
+            min_edge_weight=min_w,
+            phase_alert=phase_alert,
+        )
+
+    @staticmethod
+    def _largest_cc_fraction(A: np.ndarray, n: int) -> float:
+        """BFS — fraction of nodes in the largest connected component."""
+        if n == 0:
+            return 0.0
+        visited = np.zeros(n, dtype=bool)
+        max_cc = 0
+        for start in range(n):
+            if visited[start]:
+                continue
+            stack = [start]
+            visited[start] = True
+            cc_size = 0
+            while stack:
+                node = stack.pop()
+                cc_size += 1
+                for nbr in np.where(A[node] > 0)[0]:
+                    if not visited[nbr]:
+                        visited[nbr] = True
+                        stack.append(int(nbr))
+            if cc_size > max_cc:
+                max_cc = cc_size
+        return max_cc / n
+
+
+# ---------------------------------------------------------------------------
+# Pillar 1 — Authentication
+# ---------------------------------------------------------------------------
+
+
+class AuthenticationPillar:
+    """OSNMA Galileo authentication coverage (Pillar 1)."""
+
+    def __init__(self) -> None:
+        self._osnma = OSNMALayer()
+
+    def assess(self, osnma_auth: list[bool] | None) -> AuthenticationScore:
+        osnma = self._osnma.assess(osnma_auth)
+        return AuthenticationScore(
+            auth_fraction=osnma.auth_fraction,
+            p_spoofed=osnma.p_spoof_contribution,
+            alert=osnma.alert,
+            osnma=osnma,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Pillar 2 — Integrity
+# ---------------------------------------------------------------------------
+
+
+class IntegrityPillar:
+    """GM-RAIM + IMM-KF + INS coupling + Cooperative RAIM + Huh subset (Pillar 2).
+
+    Computes a base 4-class fault posterior from integrity signals only.
+    Structural and authentication signals are added by InterventionPillar.
     """
 
     def __init__(
         self,
         los: np.ndarray,
         noise_std: float = _DOPPLER_NOISE_STD,
-        graph_sigma: float = _GRAPH_SIGMA,
+        ins_noise_std: float = _INS_VEL_STD,
     ) -> None:
-        n_sats = len(los)
-        self._elevations = np.arcsin(np.clip(los[:, 2], -1.0, 1.0))  # [radians]
         self._gmm = GMMRaim(noise_std=noise_std)
         self._imm = IMMKalman(los=los, noise_std=noise_std)
-        self._spectral = SpectralMonitor(
-            n_sats=n_sats, noise_std=noise_std, graph_sigma=graph_sigma
-        )
-        self._entropy = FaultEntropyMonitor()
+        self._ins = INSCouplingLayer(noise_std=ins_noise_std)
+        self._coop_raim = CoopRAIMLayer(los=los, noise_std=noise_std)
+        self._huh = HuhSubsetSelector(los=los, noise_std=noise_std)
 
-    def step(self, doppler_dev: np.ndarray, t: int = 0) -> EpochDiagnosis:
-        """Process one epoch of Doppler residuals.
-
-        Args:
-            doppler_dev: (n_sats,) Doppler residuals [Hz]
-            t:           Epoch index (informational only)
-        """
-        gmm = self._gmm.classify(doppler_dev, self._elevations)
+    def assess(
+        self,
+        doppler_dev: np.ndarray,
+        elevations: np.ndarray,
+        ins_velocity: np.ndarray | None = None,
+    ) -> IntegrityScore:
+        gmm = self._gmm.classify(doppler_dev, elevations)
         imm = self._imm.update(doppler_dev)
-        spectral = self._spectral.analyze(doppler_dev)
+        ins = self._ins.assess(imm.x_fused, ins_velocity)
+        coop_raim = self._coop_raim.assess(doppler_dev)
+        huh = self._huh.select(np.array(gmm.gamma) > _GMM_FAULT_THRESH)
 
-        fp = self._fuse(gmm, imm, spectral)
-        entropy_result = self._entropy.update(fp)
-
-        idx = int(np.argmax(fp))
-        return EpochDiagnosis(
-            t=t,
-            fault_posterior=(float(fp[0]), float(fp[1]), float(fp[2]), float(fp[3])),
-            diagnosis=_FAULT_CLASSES[idx],
-            confidence=float(fp[idx]),
-            gmm=gmm,
-            imm=imm,
-            spectral=spectral,
-            entropy=entropy_result,
-        )
-
-    def _fuse(self, gmm: GMMResult, imm: IMMResult, spectral: SpectralResult) -> np.ndarray:
-        """Compute 4-class fault posterior from layer outputs."""
         mu_nom, mu_mp, mu_spoof = imm.mode_weights
-
         s_spoof = (
             mu_spoof
-            + _FUSE_SPOOF_FIEDLER * max(spectral.fiedler_ratio - 1.0, 0.0) * gmm.sign_corr
-            + _FUSE_SPOOF_RMT * spectral.rmt_anomaly
+            + _FUSE_INS_SPOOF * float(ins.alert)
+            + _FUSE_COOP_SPOOF * float(coop_raim.parity_alert or coop_raim.split_alert)
         )
         s_mp = mu_mp + _FUSE_MP_ELEV * gmm.elev_corr
         s_hw = 1.0 if gmm.n_fault == 1 else 0.0
@@ -518,8 +1099,163 @@ class ResilienceTwin:
         raw = np.clip(np.array([s_nom, s_mp, s_hw, s_spoof], dtype=float), 0.0, None)
         total = raw.sum()
         if total < _EPS:
-            return np.array([1.0, 0.0, 0.0, 0.0])
-        return raw / total
+            base: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
+        else:
+            bp = raw / total
+            base = (float(bp[0]), float(bp[1]), float(bp[2]), float(bp[3]))
+
+        return IntegrityScore(
+            base_posterior=base, gmm=gmm, imm=imm, ins=ins, coop_raim=coop_raim, huh=huh
+        )
+
+
+# ---------------------------------------------------------------------------
+# Pillar 3 — Structure
+# ---------------------------------------------------------------------------
+
+
+class StructuralPillar:
+    """Spectral graph monitor + structural dependency tracker + phase monitor (Pillar 3)."""
+
+    def __init__(
+        self,
+        n_sats: int,
+        noise_std: float = _DOPPLER_NOISE_STD,
+        graph_sigma: float = _GRAPH_SIGMA,
+    ) -> None:
+        self._spectral = SpectralMonitor(
+            n_sats=n_sats, noise_std=noise_std, graph_sigma=graph_sigma
+        )
+        self._structural = StructuralDependencyMonitor(
+            noise_std=noise_std, graph_sigma=graph_sigma
+        )
+        self._phase = DuminilCopinPhaseMonitor(graph_sigma=graph_sigma)
+
+    def update(self, doppler_dev: np.ndarray) -> StructuralScore:
+        spectral = self._spectral.analyze(doppler_dev)
+        structural = self._structural.update(doppler_dev, spectral.fiedler_ratio > 1.0)
+        phase = self._phase.update(doppler_dev)
+        structure_intensity = max(spectral.fiedler_ratio - 1.0, 0.0) + spectral.rmt_anomaly
+        return StructuralScore(
+            structure_intensity=structure_intensity,
+            spectral=spectral,
+            structural=structural,
+            phase=phase,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Pillar 4 — Intervention
+# ---------------------------------------------------------------------------
+
+
+class InterventionPillar:
+    """Entropy fusion + 4-class decision (Pillar 4).
+
+    Fuses the integrity base posterior with structural and authentication signals:
+
+        s_spoof += α_F·max(ρ_F−1,0)·C_s + α_R·rmt + α_O·p_osnma + α_S·I[struct_alert]
+    """
+
+    def __init__(self) -> None:
+        self._entropy = FaultEntropyMonitor()
+
+    def fuse(
+        self,
+        auth: AuthenticationScore,
+        integrity: IntegrityScore,
+        structure: StructuralScore,
+    ) -> tuple[np.ndarray, FaultEntropyResult]:
+        """Compute final 4-class posterior and entropy alert.
+
+        Returns:
+            (fp, entropy_result): fp is a (4,) normalized probability array.
+        """
+        p_nom, p_mp, p_hw, p_spoof = integrity.base_posterior
+
+        s_spoof = (
+            p_spoof
+            + _FUSE_SPOOF_FIEDLER
+            * max(structure.spectral.fiedler_ratio - 1.0, 0.0)
+            * integrity.gmm.sign_corr
+            + _FUSE_SPOOF_RMT * structure.spectral.rmt_anomaly
+            + _FUSE_OSNMA_SPOOF * auth.p_spoofed
+            + _FUSE_STRUCT_SPOOF * float(structure.structural.alert)
+            + _FUSE_PHASE_SPOOF * float(structure.phase.phase_alert)
+        )
+        s_mp = p_mp
+        s_hw = p_hw
+        s_nom = p_nom * max(0.0, 1.0 - max(s_spoof, s_mp, s_hw))
+
+        raw = np.clip(np.array([s_nom, s_mp, s_hw, s_spoof], dtype=float), 0.0, None)
+        total = raw.sum()
+        fp = raw / total if total >= _EPS else np.array([1.0, 0.0, 0.0, 0.0])
+
+        entropy_result = self._entropy.update(fp)
+        return fp, entropy_result
+
+
+# ---------------------------------------------------------------------------
+# ResilienceTwin orchestrator
+# ---------------------------------------------------------------------------
+
+
+class ResilienceTwin:
+    """4-pillar GNSS fault discrimination platform (T1500).
+
+    Orchestrates Authentication → Integrity → Structure → Intervention pillars
+    to produce a 4-class fault posterior per epoch:
+
+        NOMINAL | MULTIPATH | HARDWARE_FAULT | SPOOFING
+    """
+
+    def __init__(
+        self,
+        los: np.ndarray,
+        noise_std: float = _DOPPLER_NOISE_STD,
+        graph_sigma: float = _GRAPH_SIGMA,
+        ins_noise_std: float = _INS_VEL_STD,
+    ) -> None:
+        n_sats = len(los)
+        self._elevations = np.arcsin(np.clip(los[:, 2], -1.0, 1.0))  # [radians]
+        self._auth = AuthenticationPillar()
+        self._integrity = IntegrityPillar(los=los, noise_std=noise_std, ins_noise_std=ins_noise_std)
+        self._structure = StructuralPillar(
+            n_sats=n_sats, noise_std=noise_std, graph_sigma=graph_sigma
+        )
+        self._intervention = InterventionPillar()
+
+    def step(
+        self,
+        doppler_dev: np.ndarray,
+        t: int = 0,
+        ins_velocity: np.ndarray | None = None,
+        osnma_auth: list[bool] | None = None,
+    ) -> EpochDiagnosis:
+        """Process one epoch of Doppler residuals through the 4-pillar stack.
+
+        Args:
+            doppler_dev:  (n_sats,) Doppler residuals [Hz]
+            t:            Epoch index (informational only)
+            ins_velocity: (3,) external INS velocity deviation [m/s], or None
+            osnma_auth:   Per-satellite OSNMA authentication flags, or None
+        """
+        auth = self._auth.assess(osnma_auth)
+        integrity = self._integrity.assess(doppler_dev, self._elevations, ins_velocity)
+        structure = self._structure.update(doppler_dev)
+        fp, entropy_result = self._intervention.fuse(auth, integrity, structure)
+
+        idx = int(np.argmax(fp))
+        return EpochDiagnosis(
+            t=t,
+            fault_posterior=(float(fp[0]), float(fp[1]), float(fp[2]), float(fp[3])),
+            diagnosis=_FAULT_CLASSES[idx],
+            confidence=float(fp[idx]),
+            entropy=entropy_result,
+            auth=auth,
+            integrity=integrity,
+            structure=structure,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -754,3 +1490,79 @@ def run_resilience_simulation(
         n_mc=config.n_mc,
         n_mc_per_class={k: per_class_total[k] for k in class_names},
     )
+
+
+# ---------------------------------------------------------------------------
+# Observation-driven digital twin entry point
+# ---------------------------------------------------------------------------
+
+
+def run_twin_on_observations(
+    doppler_sequence: list[np.ndarray],
+    los: np.ndarray,
+    elevations: np.ndarray | None = None,
+    noise_std: float = _DOPPLER_NOISE_STD,
+    graph_sigma: float = _GRAPH_SIGMA,
+    ins_sequence: list[np.ndarray | None] | None = None,
+    osnma_sequence: list[list[bool] | None] | None = None,
+    ins_noise_std: float = _INS_VEL_STD,
+) -> list[EpochDiagnosis]:
+    """Process a real observation sequence through the GNSS Resilience Twin.
+
+    Initialises a fresh ResilienceTwin for the supplied window and runs each epoch
+    through all 8 layers, returning a per-epoch EpochDiagnosis.
+
+    Caller-supplied elevations override the values derived from LOS geometry,
+    allowing higher-fidelity GM-RAIM elevation-adjusted noise when the receiver
+    reports satellite elevations directly.
+
+    For near-real-time operation, call this function with a sliding window
+    (e.g., 30–120 epochs) as new observations arrive; the twin is stateless
+    across windows by design to guarantee reproducibility.
+
+    Args:
+        doppler_sequence: T-length list of (n_sats,) Doppler residual arrays [Hz].
+                          Δf_i = f_measured_i − f_predicted_i.
+        los:              (n_sats, 3) unit line-of-sight vectors (receiver → satellite).
+                          Used to build the IMM-KF geometry matrix H and to derive
+                          elevations if `elevations` is None.
+        elevations:       (n_sats,) elevation angles [radians].
+                          If None, derived as arcsin(clip(los[:, 2], −1, 1)).
+        noise_std:        Nominal Doppler noise 1-σ [Hz]. Default matches T1500 constants.
+        graph_sigma:      Gaussian kernel bandwidth σ [Hz]. Default matches T1500 constants.
+        ins_sequence:     T-length list of (3,) INS velocity deviations [m/s], or None per epoch.
+                          If None, the INS coupling layer uses chi²(3) self-test only.
+        osnma_sequence:   T-length list of per-satellite OSNMA authentication bool lists,
+                          or None per epoch. If None, defaults to fully authenticated.
+        ins_noise_std:    INS velocity noise 1-σ [m/s]. Default matches T1500 constants.
+
+    Returns:
+        List of T EpochDiagnosis objects in input order.
+    """
+    if len(doppler_sequence) == 0:
+        return []
+
+    n_sats = los.shape[0]
+    for i, dop in enumerate(doppler_sequence):
+        if len(dop) != n_sats:
+            raise ValueError(
+                f"doppler_sequence[{i}] has {len(dop)} entries; expected {n_sats} (= n_sats)"
+            )
+
+    twin = ResilienceTwin(
+        los=los,
+        noise_std=noise_std,
+        graph_sigma=graph_sigma,
+        ins_noise_std=ins_noise_std,
+    )
+
+    # Override elevations with caller-supplied values if provided.
+    if elevations is not None:
+        twin._elevations = elevations
+
+    results: list[EpochDiagnosis] = []
+    for i, dop in enumerate(doppler_sequence):
+        ins_vel = ins_sequence[i] if ins_sequence is not None else None
+        osnma_auth = osnma_sequence[i] if osnma_sequence is not None else None
+        results.append(twin.step(dop, t=i, ins_velocity=ins_vel, osnma_auth=osnma_auth))
+    return results

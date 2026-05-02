@@ -8,12 +8,15 @@ import numpy as np
 import pytest
 
 from gnss.resilience_twin import (
+    DuminilCopinPhaseMonitor,
     FaultEntropyMonitor,
     GMMRaim,
+    HuhSubsetSelector,
     IMMKalman,
     ResilienceTwin,
     ResilienceTwinConfig,
     SpectralMonitor,
+    _DC_SUSCEPTIBILITY_ALERT,
     _FAULT_CLASSES,
     _FEL_H_THRESH,
     _inject_hw_fault,
@@ -264,3 +267,120 @@ class TestRunResilienceSimulation:
         assert _FAULT_CLASSES[1] == FaultClass.MULTIPATH
         assert _FAULT_CLASSES[2] == FaultClass.HARDWARE_FAULT
         assert _FAULT_CLASSES[3] == FaultClass.SPOOFING
+
+
+# ---------------------------------------------------------------------------
+# Layer 9 — HuhSubsetSelector
+# ---------------------------------------------------------------------------
+
+
+class TestHuhSubsetSelector:
+    def test_no_fault_keeps_all_satellites(self) -> None:
+        los = _make_los(6)
+        sel = HuhSubsetSelector(los)
+        flags = np.zeros(6, dtype=bool)
+        result = sel.select(flags)
+        assert result.n_selected == 6
+        assert result.n_excluded == 0
+        assert result.selected_subset == tuple(range(6))
+
+    def test_one_fault_excludes_that_satellite(self) -> None:
+        los = _make_los(6)
+        sel = HuhSubsetSelector(los)
+        flags = np.array([False, False, True, False, False, False])
+        result = sel.select(flags)
+        assert result.n_selected == 5
+        assert result.n_excluded == 1
+        assert 2 not in result.selected_subset
+
+    def test_det_ratio_nonnegative(self) -> None:
+        los = _make_los(6)
+        sel = HuhSubsetSelector(los)
+        flags = np.array([False, True, False, False, False, False])
+        result = sel.select(flags)
+        assert result.det_ratio >= 0.0
+
+    def test_fallback_when_too_few_healthy(self) -> None:
+        # Only 3 healthy → below MIN_SATS=4 → fallback to all satellites
+        los = _make_los(6)
+        sel = HuhSubsetSelector(los)
+        flags = np.array([True, True, True, False, False, False])
+        result = sel.select(flags)
+        assert result.n_selected == 6
+        assert result.n_excluded == 0
+
+    def test_log_concavity_ratio_positive(self) -> None:
+        los = _make_los(6)
+        sel = HuhSubsetSelector(los)
+        flags = np.zeros(6, dtype=bool)
+        result = sel.select(flags)
+        assert result.log_concavity_ratio > 0.0
+
+    def test_result_in_integrity_score(self) -> None:
+        los = _make_los(6)
+        twin = ResilienceTwin(los)
+        diag = twin.step(np.zeros(6), t=0)
+        huh = diag.integrity.huh
+        assert huh.n_selected >= 4
+        assert 0.0 <= huh.det_ratio
+
+
+# ---------------------------------------------------------------------------
+# Layer 10 — DuminilCopinPhaseMonitor
+# ---------------------------------------------------------------------------
+
+
+class TestDuminilCopinPhaseMonitor:
+    def test_susceptibility_peak_nonnegative(self) -> None:
+        rng = np.random.default_rng(0)
+        mon = DuminilCopinPhaseMonitor()
+        result = mon.update(rng.normal(0.0, 0.30, size=6))
+        assert result.susceptibility_peak >= 0.0
+
+    def test_percolation_threshold_in_unit_interval(self) -> None:
+        rng = np.random.default_rng(1)
+        mon = DuminilCopinPhaseMonitor()
+        result = mon.update(rng.normal(0.0, 0.30, size=6))
+        assert 0.0 <= result.percolation_threshold <= 1.0
+
+    def test_lcc_at_null_in_unit_interval(self) -> None:
+        rng = np.random.default_rng(2)
+        mon = DuminilCopinPhaseMonitor()
+        result = mon.update(rng.normal(0.0, 0.30, size=6))
+        assert 0.0 <= result.lcc_at_null <= 1.0
+
+    def test_nominal_no_phase_alert(self) -> None:
+        # Nominal: P(min_w > 0.95 | σ=0.3 Hz) ≈ 0.04 %/epoch → no alert expected
+        rng = np.random.default_rng(3)
+        mon = DuminilCopinPhaseMonitor()
+        alerts = [mon.update(rng.normal(0.0, 0.30, size=6)).phase_alert for _ in range(20)]
+        assert not any(alerts), "Nominal measurements should not trigger phase alert"
+
+    def test_spoofing_triggers_phase_alert(self) -> None:
+        # Strong common bias → all edge-weights ≈ same → synchronised collapse → χ_peak >> 10
+        rng = np.random.default_rng(7)
+        mon = DuminilCopinPhaseMonitor()
+        spoofed = np.full(6, 5.0) + rng.normal(0.0, 0.05, size=6)
+        result = mon.update(spoofed)
+        assert result.phase_alert, (
+            f"Spoofing should trigger phase alert; χ_peak={result.susceptibility_peak:.2f}"
+        )
+
+    def test_hw_fault_no_phase_alert(self) -> None:
+        # HW fault: w_{0,j} ≈ 0 → min_w ≈ 0 < _DC_MIN_W_THRESHOLD=0.95 → no alert
+        mon = DuminilCopinPhaseMonitor()
+        meas = np.zeros(6)
+        meas[0] = 15.0  # single large outlier
+        result = mon.update(meas)
+        assert not result.phase_alert, (
+            f"Single HW fault should not trigger phase alert; "
+            f"χ_peak={result.susceptibility_peak:.2f}, min_w={result.min_edge_weight:.3f}"
+        )
+
+    def test_result_in_structural_score(self) -> None:
+        los = _make_los(6)
+        twin = ResilienceTwin(los)
+        diag = twin.step(np.zeros(6), t=0)
+        phase = diag.structure.phase
+        assert 0.0 <= phase.percolation_threshold <= 1.0
+        assert phase.susceptibility_peak >= 0.0
