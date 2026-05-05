@@ -18,11 +18,9 @@ from yield_twin.twin import (
     _build_info_matrix_inv,
     _d_leverages,
     _lhs_candidates,
-    _normalise,
     _quadratic_basis,
     recommend_next_experiment,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

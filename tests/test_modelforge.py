@@ -595,7 +595,16 @@ class TestModelForge:
         assert set(reports.keys()) == {"model_a", "model_b"}
 
     def test_run_idempotent_trace_appends(self, tmp_path: Path) -> None:
-        """Running forge twice on same model appends new nodes (append-only log)."""
+        """Running forge twice deduplicates deterministic nodes (idempotency).
+
+        Nodes per run:
+          - REGISTRY      : deterministic (YAML hash) → deduplicated on 2nd run
+          - VERIFICATION  : includes created_at timestamp → always new
+          - GENERATED_CODE: deterministic (skeleton source) → deduplicated on 2nd run
+          - AUDIT_ENTRY   : includes timestamp → always new
+
+        Expected: 4 (run 1) + 2 (run 2: verification + audit) = 6
+        """
         from models.forge import ModelForge
         from models.trace import TraceGraph
 
@@ -610,8 +619,11 @@ class TestModelForge:
         forge.run("test_model")
         graph = TraceGraph(path=artifacts_dir / "trace.jsonl")
         nodes = graph.load_model("test_model")
-        # 4 nodes per run × 2 runs = 8
-        assert len(nodes) == 8
+        # 4 (run 1) + 2 (run 2: verification + audit, non-deterministic due to timestamps) = 6
+        assert len(nodes) == 6
+        # All node_ids must be unique (no true duplicates in log)
+        node_ids = [n.node_id for n in nodes]
+        assert len(node_ids) == len(set(node_ids))
 
     def test_verification_report_embedded(self, tmp_path: Path) -> None:
         from models.forge import ModelForge

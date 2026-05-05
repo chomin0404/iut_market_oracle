@@ -8,6 +8,7 @@ Supported event types:
     registry_changed   — fired when a model registry YAML is edited
     forge_requested    — fired when /modelforge-run is invoked
     verify_requested   — fired when /modelforge-verify is invoked
+    report_requested   — fired when /modelforge-report is invoked
 
 Invocation:
     From hooks:
@@ -28,7 +29,10 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+
+import yaml
 
 from models.forge import ModelForge
 from models.verifier import verify_all, verify_yaml_file
@@ -38,6 +42,8 @@ from models.verifier import verify_all, verify_yaml_file
 # ---------------------------------------------------------------------------
 
 _REGISTRY_DIR = Path("configs") / "model_registry"
+_ARTIFACTS_DIR = Path("artifacts") / "modelforge"
+_REPORTS_DIR = Path("reports") / "modelforge"
 
 # ---------------------------------------------------------------------------
 # Event handlers
@@ -169,6 +175,143 @@ async def handle_verify_requested(event: dict) -> dict:
         return {"model_id": model_id, "overall": "error", "error": str(exc)}
 
 
+async def handle_report_requested(event: dict) -> dict:
+    """Generate a markdown diagnostic report from forge artifacts.
+
+    Expected event keys:
+        model_id (str): Registry entry ID; "all" generates for every forged model.
+
+    For each model the report covers:
+        - YAML spec summary (name, problem_type, solver, equations)
+        - Verification results (per-check status)
+        - Skeleton code path and SHA-256 prefix
+        - Traceability chain (REGISTRY → VERIFICATION → GENERATED_CODE → AUDIT_ENTRY)
+
+    Report written to: reports/modelforge/<model_id>.md
+    """
+    model_id: str = event.get("model_id", "all")
+    project_dir = Path(event.get("project_dir", Path.cwd())).resolve()
+    artifacts_dir = project_dir / _ARTIFACTS_DIR
+    reports_dir = project_dir / _REPORTS_DIR
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    def _report_for(mid: str) -> dict:
+        model_artifacts = artifacts_dir / mid
+        if not model_artifacts.exists():
+            return {
+                "model_id": mid,
+                "status": "error",
+                "error": "No forge artifacts found. Run /modelforge-run first.",
+            }
+
+        lines: list[str] = [
+            f"# ModelForge Report — `{mid}`",
+            "",
+            f"*Generated: {datetime.now(UTC).isoformat()}*",
+            "",
+        ]
+
+        # Spec snapshot
+        spec_path = model_artifacts / "spec_snapshot.yaml"
+        if spec_path.exists():
+            try:
+                spec = yaml.safe_load(spec_path.read_bytes())
+                lines += [
+                    "## Math Spec",
+                    "",
+                    f"- **Name**: {spec.get('name', mid)}",
+                    f"- **Problem type**: {spec.get('problem_type', '—')}",
+                    f"- **Solver**: {spec.get('solver', '—')}",
+                    "",
+                    "### Equations",
+                    "",
+                ]
+                for eq in spec.get("equations", []):
+                    lines.append(f"    {eq}")
+                lines.append("")
+                if spec.get("assumptions"):
+                    lines.append("### Assumptions")
+                    lines.append("")
+                    for a in spec["assumptions"]:
+                        lines.append(f"- {a}")
+                    lines.append("")
+            except Exception as exc:  # noqa: BLE001
+                lines.append(f"*(spec snapshot unreadable: {exc})*\n")
+
+        # Verification results
+        verification_path = model_artifacts / "verification.json"
+        if verification_path.exists():
+            try:
+                v = json.loads(verification_path.read_text(encoding="utf-8"))
+                overall = v.get("overall", "?").upper()
+                lines += [
+                    "## Verification",
+                    "",
+                    f"**Overall**: `{overall}`",
+                    "",
+                    "| Check | Status | Message |",
+                    "|---|---|---|",
+                ]
+                for c in v.get("checks", []):
+                    msg = c.get("message") or ""
+                    lines.append(f"| `{c['name']}` | `{c['status'].upper()}` | {msg} |")
+                lines.append("")
+            except Exception as exc:  # noqa: BLE001
+                lines.append(f"*(verification.json unreadable: {exc})*\n")
+
+        # Skeleton code path
+        skeleton_path = model_artifacts / "impl_skeleton.py"
+        if skeleton_path.exists():
+            rel = skeleton_path.relative_to(project_dir)
+            lines += [
+                "## Generated Code",
+                "",
+                f"Skeleton: `{rel}`",
+                "",
+            ]
+
+        # Traceability
+        trace_path = artifacts_dir / "trace.jsonl"
+        if trace_path.exists():
+            from models.trace import TraceGraph  # local import to avoid circular at module level
+
+            graph = TraceGraph(path=trace_path)
+            nodes = graph.load_model(mid)
+            if nodes:
+                lines += [
+                    "## Traceability Chain",
+                    "",
+                    "| Type | Node ID | Parent IDs | Artifact |",
+                    "|---|---|---|---|",
+                ]
+                for n in nodes:
+                    parents = ", ".join(n.parent_ids) if n.parent_ids else "—"
+                    row = (
+                        f"| `{n.node_type.value}` | `{n.node_id}` "
+                        f"| `{parents}` | `{n.artifact_path}` |"
+                    )
+                    lines.append(row)
+                lines.append("")
+
+        report_text = "\n".join(lines)
+        out_path = reports_dir / f"{mid}.md"
+        out_path.write_text(report_text, encoding="utf-8")
+        return {
+            "model_id": mid,
+            "status": "ok",
+            "report_path": str(out_path.relative_to(project_dir)),
+        }
+
+    if model_id == "all":
+        results: dict[str, dict] = {}
+        for yaml_path in sorted((project_dir / _REGISTRY_DIR).glob("*.yaml")):
+            mid = yaml_path.stem
+            results[mid] = _report_for(mid)
+        return {"results": results}
+
+    return _report_for(model_id)
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
@@ -177,6 +320,7 @@ _HANDLERS: dict[str, object] = {
     "registry_changed": handle_registry_changed,
     "forge_requested": handle_forge_requested,
     "verify_requested": handle_verify_requested,
+    "report_requested": handle_report_requested,
 }
 
 

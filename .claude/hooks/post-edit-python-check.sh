@@ -22,7 +22,7 @@ try:
 except ValueError:
     relative = file_path
 
-commands = [["ruff", "check", str(file_path)]]
+commands = [["uv", "run", "ruff", "check", str(file_path)]]
 
 candidate_tests = []
 if "tests" in relative.parts:
@@ -41,7 +41,7 @@ for path in candidate_tests:
         seen.add(path)
 
 if unique_tests:
-    commands.append(["python", "-m", "pytest", *[str(p) for p in unique_tests]])
+    commands.append(["uv", "run", "pytest", *[str(p) for p in unique_tests]])
 
 results = []
 for cmd in commands:

@@ -5,6 +5,7 @@ Commands:
     verify <model_id|all>  — static verification only
     trace <model_id>       — show traceability chain
     audit                  — tail the audit log
+    report <model_id|all>  — generate markdown diagnostic report from forge artifacts
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ def _cmd_run(model_id: str) -> None:
 
 
 def _cmd_verify(model_id: str) -> None:
-    from models.verifier import verify_yaml_file, verify_all
+    from models.verifier import verify_all, verify_yaml_file
 
     registry_dir = Path("configs") / "model_registry"
     if model_id == "all":
@@ -85,10 +86,8 @@ def _cmd_audit(tail: int = 20) -> None:
     print(f"ModelForge audit log (last {len(recent)} entries):")
     for line in recent:
         record = json.loads(line)
-        print(
-            f"  {record['timestamp']}  [{record['event']:20s}] {record['model_id']}"
-            + (f"  {record.get('verification_overall', '')}" if "verification_overall" in record else "")
-        )
+        v_extra = f"  {record['verification_overall']}" if "verification_overall" in record else ""
+        print(f"  {record['timestamp']}  [{record['event']:20s}] {record['model_id']}{v_extra}")
 
 
 def main() -> None:
@@ -112,6 +111,22 @@ def main() -> None:
         _cmd_trace(args[1])
     elif cmd == "audit":
         _cmd_audit()
+    elif cmd == "report":
+        import asyncio
+
+        from models.automation import dispatch
+
+        model_id = args[1] if len(args) > 1 else "all"
+        result = asyncio.run(dispatch("report_requested", {"model_id": model_id}))
+        if "results" in result:
+            for mid, r in result["results"].items():
+                status = r.get("status", "?")
+                path = r.get("report_path", r.get("error", ""))
+                print(f"[{status.upper()}] {mid}  {path}")
+        else:
+            status = result.get("status", "?")
+            path = result.get("report_path", result.get("error", ""))
+            print(f"[{status.upper()}] {model_id}  {path}")
     else:
         print(f"Unknown command: {cmd!r}", file=sys.stderr)
         print(__doc__, file=sys.stderr)

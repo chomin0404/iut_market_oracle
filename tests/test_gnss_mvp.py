@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from gnss.mvp import (
+    _INS_WEIGHT_BY_CLASS,
+    _MIN_SATS_REQUIRED,
     ActionPlanner,
     ControlAction,
     MVPPipeline,
@@ -14,14 +16,9 @@ from gnss.mvp import (
     ReceiverObservation,
     TwinCore,
     TwinDiagnosis,
-    _CN0_MIN_DBHz,
-    _INS_WEIGHT_BY_CLASS,
-    _MIN_SATS_REQUIRED,
-    _SQM_EXCLUDE_THRESH,
 )
 from gnss.spoof_sim import _init_constellation
 from schemas import FaultClass
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -292,10 +289,9 @@ class TestActionPlanner:
         # Use the integration pipeline running spoofed epochs (warm-up over 30 steps).
         pipeline = MVPPipeline(n_sats=6, mc_replay_n=0)
         rng = np.random.default_rng(11)
-        last_action = None
         for i in range(30):
             spoofed = np.full(6, 5.0) + rng.normal(0, 0.05, 6)
-            last_action = pipeline.step(_make_raw(epoch=i, doppler=spoofed))
+            pipeline.step(_make_raw(epoch=i, doppler=spoofed))
         # After 30 spoofed epochs, mean INS weight should be well above the nominal floor
         assert pipeline.mean_ins_weight() > _INS_WEIGHT_BY_CLASS[FaultClass.NOMINAL]
 

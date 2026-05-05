@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from gnss.resilience_twin import (
+    _FAULT_CLASSES,
     DuminilCopinPhaseMonitor,
     FaultEntropyMonitor,
     GMMRaim,
@@ -16,16 +17,12 @@ from gnss.resilience_twin import (
     ResilienceTwin,
     ResilienceTwinConfig,
     SpectralMonitor,
-    _DC_SUSCEPTIBILITY_ALERT,
-    _FAULT_CLASSES,
-    _FEL_H_THRESH,
     _inject_hw_fault,
     _inject_multipath,
     run_resilience_simulation,
 )
 from gnss.spoof_sim import _init_constellation
 from schemas import FaultClass, ResilienceTwinReport
-
 
 # ---------------------------------------------------------------------------
 # Helpers

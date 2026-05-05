@@ -67,12 +67,21 @@ class TraceGraph:
 
     # ── Write ────────────────────────────────────────────────────────────
 
-    def append(self, node: TraceNode) -> None:
-        """Append one TraceNode to the JSONL log (creates file/dirs if needed)."""
+    def append(self, node: TraceNode) -> bool:
+        """Append one TraceNode to the JSONL log (idempotent — skips if node_id already present).
+
+        Returns:
+            True if node was written, False if it already existed.
+        """
+        if self._path.exists():
+            existing_ids = {n.node_id for n in self.load_all()}
+            if node.node_id in existing_ids:
+                return False
         self._path.parent.mkdir(parents=True, exist_ok=True)
         line = node.model_dump_json() + "\n"
         with self._path.open("a", encoding="utf-8") as fh:
             fh.write(line)
+        return True
 
     # ── Read ─────────────────────────────────────────────────────────────
 

@@ -68,7 +68,9 @@
             "statusMessage": "Checking protected files and artifact write policy"
           }
         ]
-      },
+      }
+    ],
+    "PostToolUse": [
       {
         "matcher": "Edit|Write",
         "hooks": [
@@ -77,14 +79,7 @@
             "if": "Edit(configs/model_registry/*.yaml)|Write(configs/model_registry/*.yaml)",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/on-registry-change.sh",
             "statusMessage": "ModelForge: auto-verify + forge after registry YAML change"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
+          },
           {
             "type": "command",
             "if": "Edit(*.py)",

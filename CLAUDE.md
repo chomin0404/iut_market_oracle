@@ -3,7 +3,8 @@
 See @README.md for project overview and usage, @pyproject.toml for package/tool settings, @Makefile for canonical commands, and @configs/dependency_edges.yaml for editable dependency structure.
 
 ## Purpose
-- Maintain a research-grade pipeline: classification -> graph scoring -> markdown reporting -> CLI -> CI.
+- Maintain a research-grade end-to-end pipeline: **math spec (YAML) → verify → skeleton code → trace → audit → report → CI**.
+- Every model must exist first as a registry YAML; code without a verified YAML spec is prohibited.
 - Prefer minimal diffs, deterministic behavior, and reproducible outputs.
 
 ## Rules
@@ -56,6 +57,22 @@ Rotation policy: same as config-changes log (1 MB, 10 archives, gzip).
 - Adding a new model = add YAML first, run `/modelforge-run <id>`, then write code.
 - A model's YAML `id` must match its filename stem exactly.
 
+### Full pipeline (end-to-end)
+```
+1. Author  configs/model_registry/<id>.yaml    (math spec — single source of truth)
+2. Verify  /modelforge-verify <id>             (7 static checks, no artifacts)
+3. Forge   /modelforge-run <id>                (verify + skeleton + trace + audit)
+4. Code    src/<module>/<id>.py                (human/LLM implementation, guided by skeleton)
+5. Test    uv run pytest tests/                (all tests must pass)
+6. Report  /modelforge-report <id>             (markdown report from forge artifacts)
+7. CI      make ci                             (lint + test-cov + report)
+```
+
+Hook automation:
+- Edit/Write `configs/model_registry/*.yaml` → `on-registry-change.sh` auto-runs verify + forge (PostToolUse)
+- Edit/Write `*.py` → `post-edit-python-check.sh` auto-runs ruff + targeted pytest (PostToolUse)
+- Before stop → `stop-verify.sh` gates on lint + test-cov state markers
+
 ### Commands
 | Command | Action |
 |---|---|
@@ -63,3 +80,4 @@ Rotation policy: same as config-changes log (1 MB, 10 archives, gzip).
 | `/modelforge-verify <id\|all>` | Static verification only, no artifacts |
 | `/modelforge-trace <id>` | Show DAG for a model |
 | `/modelforge-audit` | Tail audit log |
+| `/modelforge-report <id\|all>` | Generate markdown report from forge artifacts |
