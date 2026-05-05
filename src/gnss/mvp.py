@@ -19,18 +19,28 @@ Signal domains:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
+from gnss.action_engine import (
+    DOWNWEIGHT_THRESH,
+    HARD_EXCLUDE_THRESH,
+    AlertBuilder,
+    AlertEvent,
+    FailsafeLevel,
+    FailsafeManager,
+    FailsafeState,
+    SatelliteScorer,
+)
 from gnss.resilience_twin import (
-    EpochDiagnosis,
-    ResilienceTwin,
     _DOPPLER_NOISE_STD,
     _GRAPH_SIGMA,
     _INS_VEL_STD,
-    run_resilience_simulation,
+    EpochDiagnosis,
+    ResilienceTwin,
     ResilienceTwinConfig,
+    run_resilience_simulation,
 )
 from gnss.spoof_sim import _init_constellation
 from schemas import FaultClass
@@ -55,6 +65,10 @@ _INS_WEIGHT_BY_CLASS: dict[FaultClass, float] = {
 
 _CONFIDENCE_MC_THRESH: float = 0.60   # trigger MC replay when confidence < this
 _MC_REPLAY_N: int = 16                 # MC runs for confidence-triggered replay
+
+# ActionPlanner — INS EMA parameters
+_EMA_ALPHA: float = 0.30              # smoothing factor (≈ 3-epoch 95% window)
+_CONFIDENCE_GATE_THRESH: float = 0.70 # below this, bypass EMA toward raw value
 
 # ---------------------------------------------------------------------------
 # Shared data classes
@@ -108,18 +122,25 @@ class TwinDiagnosis:
 class ControlAction:
     """Actionable output of ActionPlanner.
 
-    ``excluded_satellites``: indices to drop from position solution.
-    ``ins_weight``: recommended INS blending weight ∈ [0, 1].
-    ``reason``: human-readable rationale string.
+    ``excluded_satellites``: indices hard-excluded from the position solution.
+    ``satellite_weights``  : per-satellite blend weight ∈ [0, 1]; 0 for excluded,
+                             (1−s_i) for downweighted, 1 for accepted.
+    ``ins_weight``         : recommended INS blending weight ∈ [0, 1] (EMA-smoothed).
+    ``failsafe``           : current failsafe state machine snapshot.
+    ``alert``              : structured alert event for this epoch.
+    ``reason``             : human-readable rationale string (backward compat).
     """
 
     epoch: int
-    excluded_satellites: tuple[int, ...]   # satellite indices to exclude
-    n_active: int                          # satellites remaining after exclusion
-    ins_weight: float                      # blending weight for INS ∈ [0, 1]
+    excluded_satellites: tuple[int, ...]   # hard-excluded satellite indices
+    n_active: int                          # satellites remaining after hard exclusion
+    ins_weight: float                      # EMA-smoothed INS blending weight ∈ [0, 1]
     diagnosis: FaultClass                  # dominant fault class
     confidence: float                      # max(fault_posterior)
     reason: str                            # plain-language justification
+    satellite_weights: tuple[float, ...]   # (n_sats,) per-satellite weights ∈ [0, 1]
+    failsafe: FailsafeState                # failsafe state machine snapshot
+    alert: AlertEvent                      # structured severity-levelled alert
 
 
 # ---------------------------------------------------------------------------
@@ -266,19 +287,37 @@ class TwinCore:
 class ActionPlanner:
     """Map TwinDiagnosis + ReceiverObservation to a ControlAction.
 
-    Satellite exclusion policy (priority order):
-      1. Pre-excluded by ReceiverAgent (C/N0 / SQM)
-      2. Excluded by Huh D-optimal subset selector (GM-RAIM fault flags)
-      Fallback: if fewer than _MIN_SATS_REQUIRED remain, revert to ReceiverAgent
-      exclusions only (preserves geometric redundancy floor).
+    Satellite exclusion (3-tier soft scoring):
+      s_i = 0.60·γ_i + 0.25·𝟙[SQM_i>0.70] + 0.15·(1−auth_i)
+      s_i ≥ 0.75  → hard exclude (weight = 0)
+      0.40 ≤ s_i  → downweight  (weight = 1−s_i)
+      s_i < 0.40  → accept      (weight = 1.0)
+      ReceiverAgent pre-excluded satellites are always hard-excluded.
+      Fallback: if hard exclusion leaves < min_sats, apply only pre-exclusions;
+      if still < min_sats, keep all satellites.
 
-    INS weight:
-      w_ins = Σᵢ P(class_i) · w_i
-      where w_i ∈ {0.05, 0.25, 0.60, 0.90} indexed by FaultClass.
+    INS weight (EMA-smoothed, confidence-gated):
+      w_raw = Σᵢ P(class_i) · w_i          (posterior-weighted fixed table)
+      w_ema ← α·w_raw + (1−α)·w_ema        (cold-start: w_ema = w_raw)
+      if confidence ≥ 0.70 → w_ins = w_ema
+      else → w_ins = blend·w_ema + (1−blend)·w_raw  (blend = conf/0.70)
+      w_ins is then clamped to the failsafe level's [floor, ceil] interval.
+
+    Failsafe state machine:
+      Descends immediately on worsening; recovers after
+      _FAILSAFE_RECOVERY_EPOCHS consecutive eligible epochs.
+
+    Alert hierarchisation:
+      CRITICAL, WARNING, CAUTION, INFO based on spoofing probability,
+      number of active alert sources, and current failsafe level.
     """
 
     def __init__(self, min_sats: int = _MIN_SATS_REQUIRED) -> None:
         self._min_sats = min_sats
+        self._scorer = SatelliteScorer()
+        self._failsafe_mgr = FailsafeManager(min_sats=min_sats)
+        self._alert_builder = AlertBuilder()
+        self._ema_ins_weight: float | None = None  # None = uninitialized (cold start)
 
     def plan(
         self,
@@ -286,65 +325,131 @@ class ActionPlanner:
         obs: ReceiverObservation,
     ) -> ControlAction:
         diag = twin_diag.epoch_diag
-        fp = diag.fault_posterior          # (P_nom, P_mp, P_hw, P_spoof)
-        huh = diag.integrity.huh
+        fp = diag.fault_posterior       # (P_nom, P_mp, P_hw, P_spoof)
 
         n = obs.n_sats
         all_indices = set(range(n))
 
-        # --- Satellite exclusion ---
-        # Huh excluded set is complement of selected_subset
-        huh_selected = set(huh.selected_subset)
-        huh_excluded = all_indices - huh_selected
-        # Union with ReceiverAgent pre-exclusions
-        combined_excluded = huh_excluded | set(obs.pre_excluded)
-        remaining = all_indices - combined_excluded
+        # ----------------------------------------------------------------
+        # 1. Satellite soft-exclusion scoring
+        # ----------------------------------------------------------------
+        scores = self._scorer.score(
+            gmm_gamma=diag.integrity.gmm.gamma,
+            n_sats=n,
+            sqm=obs.sqm,
+            osnma_auth=obs.osnma_auth,
+        )
+        # ReceiverAgent pre-excluded → force hard-exclude
+        for idx in obs.pre_excluded:
+            scores[idx] = 1.0
 
-        # Fallback: if too few satellites remain after Huh+RX exclusion,
-        # only apply RX-level exclusions (honour geometry floor)
-        if len(remaining) < self._min_sats:
-            combined_excluded = set(obs.pre_excluded)
-            remaining = all_indices - combined_excluded
+        hard_excluded = {i for i in range(n) if scores[i] >= HARD_EXCLUDE_THRESH}
+        remaining = all_indices - hard_excluded
 
-        # Final floor: if still below minimum, keep everything
+        # Fallback 1: too few after soft scoring → only use pre-exclusions
         if len(remaining) < self._min_sats:
-            combined_excluded = set()
+            hard_excluded = set(obs.pre_excluded)
+            remaining = all_indices - hard_excluded
+
+        # Fallback 2: still too few → keep all satellites
+        if len(remaining) < self._min_sats:
+            hard_excluded = set()
             remaining = all_indices
 
-        # --- INS weight ---
-        # Posterior-weighted sum over fault classes
-        weights = [
+        # Per-satellite weights: 0 for hard-excluded, (1−s) downweighted, 1 accepted
+        sat_weights = np.zeros(n, dtype=np.float64)
+        for i in range(n):
+            if i not in hard_excluded:
+                if scores[i] >= DOWNWEIGHT_THRESH:
+                    sat_weights[i] = 1.0 - float(scores[i])
+                else:
+                    sat_weights[i] = 1.0
+
+        n_active = len(remaining)
+
+        # ----------------------------------------------------------------
+        # 2. INS weight — EMA with confidence gate
+        # ----------------------------------------------------------------
+        ins_class_weights = [
             _INS_WEIGHT_BY_CLASS[FaultClass.NOMINAL],
             _INS_WEIGHT_BY_CLASS[FaultClass.MULTIPATH],
             _INS_WEIGHT_BY_CLASS[FaultClass.HARDWARE_FAULT],
             _INS_WEIGHT_BY_CLASS[FaultClass.SPOOFING],
         ]
-        ins_weight = float(sum(p * w for p, w in zip(fp, weights)))
+        w_raw = float(np.clip(sum(p * w for p, w in zip(fp, ins_class_weights)), 0.0, 1.0))
+
+        # Cold-start: first call initialises EMA to raw value (preserves old formula)
+        if self._ema_ins_weight is None:
+            self._ema_ins_weight = w_raw
+        else:
+            self._ema_ins_weight = _EMA_ALPHA * w_raw + (1.0 - _EMA_ALPHA) * self._ema_ins_weight
+
+        # Confidence gate: low-confidence epochs bypass EMA to stay responsive
+        confidence = diag.confidence
+        if confidence >= _CONFIDENCE_GATE_THRESH:
+            ins_weight = self._ema_ins_weight
+        else:
+            blend = confidence / _CONFIDENCE_GATE_THRESH
+            ins_weight = blend * self._ema_ins_weight + (1.0 - blend) * w_raw
         ins_weight = float(np.clip(ins_weight, 0.0, 1.0))
 
-        # --- Reason string ---
+        # ----------------------------------------------------------------
+        # 3. Failsafe state machine
+        # ----------------------------------------------------------------
+        spoofing_prob = float(fp[3])
+        osnma = diag.auth.osnma
+        osnma_all_failed = osnma.n_total > 0 and osnma.n_auth == 0
+
+        failsafe = self._failsafe_mgr.update(
+            n_active=n_active,
+            spoofing_prob=spoofing_prob,
+            entropy_alert=diag.entropy.alert,
+            osnma_all_failed=osnma_all_failed,
+        )
+
+        # Apply failsafe clamping to ins_weight
+        ins_weight = float(np.clip(ins_weight, failsafe.ins_weight_floor, failsafe.ins_weight_ceil))
+
+        # ----------------------------------------------------------------
+        # 4. Alert event
+        # ----------------------------------------------------------------
+        alert = self._alert_builder.build(
+            epoch=twin_diag.epoch,
+            fault_posterior=diag.fault_posterior,
+            entropy_alert=diag.entropy.alert,
+            osnma_alert=diag.auth.alert,
+            phase_alert=diag.structure.phase.phase_alert,
+            structure_alert=diag.structure.structural.alert,
+            failsafe=failsafe,
+            n_active=n_active,
+            mc_auc=twin_diag.mc_auc,
+        )
+
+        # ----------------------------------------------------------------
+        # 5. Reason string (backward compatible)
+        # ----------------------------------------------------------------
         diagnosis = diag.diagnosis
-        reason_parts: list[str] = [f"diagnosis={diagnosis.value}(conf={diag.confidence:.2f})"]
-        if combined_excluded:
-            reason_parts.append(f"excluded={sorted(combined_excluded)}")
-        if diag.entropy.alert:
-            reason_parts.append("entropy_alert")
-        if diag.auth.alert:
-            reason_parts.append("osnma_alert")
-        if diag.structure.phase.phase_alert:
-            reason_parts.append("phase_alert")
+        reason_parts: list[str] = [f"diagnosis={diagnosis.value}(conf={confidence:.2f})"]
+        if hard_excluded:
+            reason_parts.append(f"excluded={sorted(hard_excluded)}")
+        if alert.sources:
+            reason_parts.append(f"alerts={','.join(alert.sources)}")
+        if failsafe.level != FailsafeLevel.NOMINAL:
+            reason_parts.append(f"failsafe={failsafe.level.value}")
         if twin_diag.mc_auc is not None:
             reason_parts.append(f"mc_auc={twin_diag.mc_auc:.3f}")
-        reason = "; ".join(reason_parts)
 
         return ControlAction(
             epoch=twin_diag.epoch,
-            excluded_satellites=tuple(sorted(combined_excluded)),
-            n_active=len(remaining),
+            excluded_satellites=tuple(sorted(hard_excluded)),
+            n_active=n_active,
             ins_weight=ins_weight,
             diagnosis=diagnosis,
             confidence=diag.confidence,
-            reason=reason,
+            reason="; ".join(reason_parts),
+            satellite_weights=tuple(sat_weights.tolist()),
+            failsafe=failsafe,
+            alert=alert,
         )
 
 
