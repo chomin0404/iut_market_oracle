@@ -5,6 +5,9 @@
      [F2] batch モード非同期化: 202 Accepted + task_id / GET polling (§12)
      [F3] imu_residual 型明確化: IMUResidual 型を新設、単位・正規化方法を明記 (§11.1, §13)
      [F4] Section 11.1 補完: 全型定義を追記 (§11.1)
+     [F5] State Posterior 合計制約明示: §13.5 StatePosterior 不変量を追加
+     [F6] PVTReestimate 出力定義: §14.2 PVTReestimateResult を新設
+     [F7] 既存実装との対応表修正: §14 を Layer 1–10 の一貫番号体系に統一、EpochDiagnosis フィールドパスを追加
 -->
 
 ---
@@ -295,6 +298,40 @@ API レスポンスでは `EpochReport.ins_chi2_vel = mahalanobis_dist²` とし
 
 > クライアントが `run_id` をリクエストボディに含めた場合、サーバは **422 Unprocessable Entity** を返す。
 
+### 13.5 StatePosterior — 合計制約と不変量
+
+<!-- [F5] State Posterior の合計制約を明示する -->
+
+`fault_posterior` は 4 次元確率単体 (probability simplex) S⁴ の要素である:
+
+```
+Invariant:  Σᵢ fault_posterior[i] = 1.0   (i ∈ {0,1,2,3})
+            fault_posterior[i] ≥ 0.0       for all i
+```
+
+**実装上の保証**:
+
+| 保証場所 | 方法 |
+|---|---|
+| `ResilienceTwin.step()` | `softmax(score)` を適用 → 数値的に和 = 1 |
+| `TwinDiagnosis.epoch_diag.fault_posterior` | `GMMRaim` + 融合スコアの出力をそのまま格納 |
+| `EpochReport.fault_posterior` | API シリアライズ時に丸めは行わない (float 精度のまま) |
+| テスト | `test_fault_posterior_sums_to_one`: `abs(sum(fp) − 1.0) < 1e-9` |
+
+**診断フィールドとの対応**:
+
+```
+fault_posterior = (P_nominal, P_multipath, P_hardware_fault, P_spoofing)
+                   index 0       index 1       index 2           index 3
+
+authenticity["genuine"]  = P_nominal + P_multipath + P_hardware_fault
+authenticity["spoofed"]  = P_spoofing
+integrity["nominal"]     = P_nominal
+integrity["degraded"]    = P_multipath + P_hardware_fault + P_spoofing
+```
+
+これらの派生フィールドも常に [0, 1] に収まる（単体制約から自動保証）。
+
 ### 13.4 ObservationEpoch (既存型との対応)
 
 ```python
@@ -313,20 +350,22 @@ class ObservationEpoch(BaseModel):
 
 ## 14. Detection Layers (参照)
 
-4 本柱の実装概要。詳細は各ソースファイルを参照。
+<!-- [F7] Layer 1–10 の一貫番号体系に統一、EpochDiagnosis フィールドパスを追加 -->
 
-| レイヤ | クラス | ファイル | 主要出力 |
-|---|---|---|---|
-| 認証 | `OSNMAReceiver` / `AuthMonitor` | `gnss/core.py`, `resilience_twin.py` | `auth_fraction`, `p_spoofed`, `alert` |
-| 完全性 1 | `GMMRaim` | `resilience_twin.py` | `gamma[n_sats]`, `n_fault`, `sign_corr` |
-| 完全性 2 | `IMMKalman` | `resilience_twin.py` | `mode_weights[3]`, `x_fused[4]` |
-| 完全性 3 | `INSCoupling` | `resilience_twin.py` | `chi2_vel`, `alert` |
-| 完全性 4 | `CoopRAIM` | `resilience_twin.py` | `parity_chi2`, `parity_alert` |
-| 構造 1 | `SpectralMonitor` | `resilience_twin.py` | `fiedler_ratio`, `rmt_anomaly` |
-| 構造 2 | `StructuralDependencyMonitor` | `resilience_twin.py` | `fiedler_streak`, `alert` |
-| 介入 | `FaultEntropyMonitor` | `resilience_twin.py` | `entropy`, `kl`, `alert` |
-| Layer 9 | `HuhSubsetSelector` | `resilience_twin.py` | `selected_subset`, `det_ratio`, `log_concavity_ratio` |
-| Layer 10 | `DuminilCopinPhaseMonitor` | `resilience_twin.py` | `susceptibility_peak`, `percolation_threshold`, `phase_alert` |
+4 本柱 10 レイヤの実装マッピング。`EpochDiagnosis` フィールドパスは `ResilienceTwin.step()` の戻り値へのアクセス経路。
+
+| Layer | 柱 | 実装クラス | ソースファイル | 主要出力フィールド | EpochDiagnosis フィールドパス |
+|---|---|---|---|---|---|
+| 1 | 認証 | `OSNMAReceiver` + `AuthMonitor` | `gnss/core.py`, `resilience_twin.py` | `auth_fraction`, `p_spoofed`, `alert` | `diag.auth.osnma.auth_fraction`, `diag.auth.p_spoofed`, `diag.auth.alert` |
+| 2 | 完全性 | `GMMRaim` | `resilience_twin.py` | `gamma[n_sats]`, `n_fault`, `sign_corr` | `diag.integrity.gmm.gamma`, `diag.integrity.gmm.n_fault`, `diag.integrity.gmm.sign_corr` |
+| 3 | 完全性 | `IMMKalman` | `resilience_twin.py` | `mode_weights[3]`, `x_fused[4]`, `innovation_norms[3]` | `diag.integrity.imm.mode_weights`, `diag.integrity.imm.x_fused` |
+| 4 | 完全性 | `INSCoupling` | `resilience_twin.py` | `chi2_vel`, `alert` | `diag.integrity.ins.chi2_vel`, `diag.integrity.ins.alert` |
+| 5 | 完全性 | `CoopRAIM` | `resilience_twin.py` | `parity_chi2`, `parity_alert` | `diag.integrity.coop_raim.parity_chi2`, `diag.integrity.coop_raim.parity_alert` |
+| 6 | 構造 | `SpectralMonitor` | `resilience_twin.py` | `fiedler_ratio`, `rmt_anomaly`, `spectral_entropy` | `diag.structure.spectral.fiedler_ratio`, `diag.structure.spectral.rmt_anomaly` |
+| 7 | 構造 | `StructuralDependencyMonitor` | `resilience_twin.py` | `fiedler_streak`, `alert` | `diag.structure.structural.fiedler_streak`, `diag.structure.structural.alert` |
+| 8 | 介入 | `FaultEntropyMonitor` | `resilience_twin.py` | `entropy`, `kl`, `alert` | `diag.entropy.entropy`, `diag.entropy.kl`, `diag.entropy.alert` |
+| 9 | 完全性 | `HuhSubsetSelector` | `resilience_twin.py` | `selected_subset`, `n_selected`, `det_ratio`, `log_concavity_ratio` | `diag.integrity.huh.selected_subset`, `diag.integrity.huh.det_ratio`, `diag.integrity.huh.log_concavity_ratio` |
+| 10 | 構造 | `DuminilCopinPhaseMonitor` | `resilience_twin.py` | `susceptibility_peak`, `percolation_threshold`, `lcc_at_null`, `phase_alert` | `diag.structure.phase.susceptibility_peak`, `diag.structure.phase.percolation_threshold`, `diag.structure.phase.phase_alert` |
 
 ### 14.1 スコア融合
 
@@ -343,6 +382,59 @@ fault_posterior = softmax(score)   # sum = 1
 diagnosis       = argmax(fault_posterior)
 confidence      = max(fault_posterior)
 ```
+
+### 14.2 PVTReestimateResult
+
+<!-- [F6] PVT 再推定の出力を定義する -->
+
+Layer 9 (`HuhSubsetSelector`) が選択した健全衛星サブセットを用いて PVT を再推定した結果。
+`HuhSubsetResult.selected_subset` を入力として位置・速度・時計バイアスを再計算する。
+
+#### 出力フィールド
+
+| フィールド | 型 | 単位 | 説明 |
+|---|---|---|---|
+| `position_enu` | `float[3]` | m | ENU 座標系での位置推定値 `[East, North, Up]` (参照点からの偏差) |
+| `velocity_enu` | `float[3]` | m/s | ENU 座標系での速度推定値 |
+| `clock_bias_m` | `float` | m | 受信機時計バイアス (光速換算) |
+| `clock_drift_ms` | `float` | m/s | 受信機時計ドリフト (光速換算) |
+| `gdop` | `float` | 無次元 | Geometric DOP — `sqrt(trace(H^T H)^{-1})` |
+| `pdop` | `float` | 無次元 | Position DOP — 3D 位置成分のみの DOP |
+| `n_sats_used` | `int` | — | 使用衛星数 (= `HuhSubsetResult.n_selected`) |
+| `excluded_indices` | `int[]` | — | 除外衛星インデックス (= `HuhSubsetResult.n_excluded` 分) |
+| `postfit_residuals` | `float[n_selected]` | m | 推定後の擬似距離残差 |
+| `integrity_ok` | `bool` | — | PDOP < 6.0 かつ `n_sats_used` ≥ 4 のとき `true` |
+
+#### 算出規則
+
+```
+H = geometry_matrix(los[selected_subset])   # (n_selected × 4) — [e_x, e_y, e_z, 1]
+x̂ = (H^T W H)^{-1} H^T W r                 # 重み付き最小二乗 PVT
+W = diag(sin²(el_i))                        # 仰角加重
+
+postfit_residuals = r[selected_subset] − H · x̂
+gdop = sqrt(trace((H^T H)^{-1}))
+pdop = sqrt(trace((H^T H)^{-1})[:3, :3]))
+integrity_ok = (pdop < 6.0) and (n_sats_used >= 4)
+```
+
+#### 実装との対応
+
+現行実装では `HuhSubsetSelector` は衛星インデックスの選択のみを行い、
+PVT 再計算は `gnss/spoof_sim.py` の `_geometry_matrix()` と `_propagate_state()` を利用して
+呼び出し元 (`ResilienceTwin`) が実行する想定。`PVTReestimateResult` は次期バージョンで
+`EpochDiagnosis.integrity.pvt_reestimate` フィールドとして追加予定。
+
+#### API での露出
+
+`EpochReport` への追加フィールド（予定）:
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `pvt_gdop` | `float \| null` | 再推定後 GDOP |
+| `pvt_pdop` | `float \| null` | 再推定後 PDOP |
+| `pvt_integrity_ok` | `bool \| null` | PVT 完全性フラグ |
+| `pvt_n_sats_used` | `int \| null` | 再推定使用衛星数 (= `huh_n_selected` と一致すること) |
 
 ---
 
