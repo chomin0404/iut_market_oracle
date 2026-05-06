@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 
@@ -78,7 +78,7 @@ class PosteriorSummary(BaseModel):
     variance: float = Field(..., ge=0.0)
     credible_interval_95: tuple[float, float]
     n_evidence: int = Field(..., ge=0)
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def interval_ordered(self) -> PosteriorSummary:
@@ -179,7 +179,7 @@ class ScenarioResult(BaseModel):
         default_factory=dict,
         description="Partial derivatives w.r.t. each assumption param",
     )
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     output_path: str | None = None
 
 
@@ -198,7 +198,7 @@ class ExperimentMeta(BaseModel):
     note_path: str | None = None
     random_seed: int | None = None
     tags: list[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     summary: str = ""
 
 
@@ -228,7 +228,7 @@ class DigitalTwinState(BaseModel):
     state_labels: list[str] = Field(..., min_length=1)
     param_snapshot: dict[str, float] = Field(default_factory=dict)
     step: int = Field(default=0, ge=0)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def labels_match_vector(self) -> DigitalTwinState:
@@ -254,7 +254,7 @@ class SimulationResult(BaseModel):
     horizon: int = Field(..., ge=1)
     state_labels: list[str] = Field(..., min_length=1)
     config_path: str | None = None
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def dimensions_consistent(self) -> SimulationResult:
@@ -350,7 +350,7 @@ class ExitValueSummary(BaseModel):
     scenario_pvs: dict[str, float]
     expected_value: float
     sensitivity: dict[str, float] = Field(default_factory=dict)
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TimingDistribution(BaseModel):
@@ -406,7 +406,7 @@ class RegimeSwitchResult(BaseModel):
     regimes: list[int] = Field(..., min_length=1)
     p_stay_normal: float = Field(..., gt=0.0, lt=1.0, description="P(regime=0 | prev=0)")
     p_stay_volatile: float = Field(..., gt=0.0, lt=1.0, description="P(regime=1 | prev=1)")
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def lengths_consistent(self) -> RegimeSwitchResult:
@@ -447,7 +447,7 @@ class MarketEvolutionResult(BaseModel):
     market_capture: list[float] = Field(..., min_length=1)
     gamma_alpha: float = Field(..., gt=0.0, description="Gamma shape parameter alpha")
     gamma_beta: float = Field(..., gt=0.0, description="Gamma rate parameter beta (scale=1/beta)")
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def lengths_consistent(self) -> MarketEvolutionResult:
@@ -492,7 +492,7 @@ class MatroidLogConcavityResult(BaseModel):
     log_probability: list[float] = Field(..., min_length=1, description="log(b_k + eps)")
     log_concavity_checks: list[bool] = Field(..., description="b_k² >= b_{k-1}*b_{k+1} for k=1…n-1")
     is_log_concave: bool
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def lengths_consistent(self) -> MatroidLogConcavityResult:
@@ -544,7 +544,7 @@ class EntropyAlert(BaseModel):
     metric_value: float
     threshold: float
     message: str = ""
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class EntropyReport(BaseModel):
@@ -566,7 +566,7 @@ class EntropyReport(BaseModel):
     kl_series: list[float] = Field(..., min_length=1)
     entropy_rate_series: list[float] = Field(default_factory=list)
     alerts: list[EntropyAlert] = Field(default_factory=list)
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def series_lengths_consistent(self) -> EntropyReport:
@@ -655,7 +655,7 @@ class MCSimReport(BaseModel):
     p_detection: float = Field(..., ge=0.0, le=1.0)
     p_false_alarm: float = Field(..., ge=0.0, le=1.0)
     n_mc: int = Field(..., ge=1)
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     runs: list[RunResult] = Field(
         default_factory=list,
         description="Per-run summary and trace for each MC realisation",
@@ -747,7 +747,7 @@ class MSSimReport(BaseModel):
     roc_tpr: list[float]
     n_nominal: int = Field(..., ge=1)
     n_attack: int = Field(..., ge=1)
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     runs: list[MSRunResult] = Field(
         default_factory=list,
         description="Per-run results: nominal runs first, attack runs second",
@@ -920,7 +920,7 @@ class ResilienceTwinReport(BaseModel):
     mean_confidence: float = Field(..., ge=0.0, le=1.0)
     n_mc: int = Field(..., ge=1)
     n_mc_per_class: dict[str, int] = Field(..., description="FaultClass.value → trial count")
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def confusion_matrix_4x4(self) -> ResilienceTwinReport:
@@ -1095,7 +1095,7 @@ class TwinRunReport(BaseModel):
     worst_action: RecommendedAction = Field(
         ..., description="Highest-severity action across all epochs"
     )
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------
@@ -1181,7 +1181,7 @@ class YieldTwinReport(BaseModel):
         description="signal_var, noise_var, length_scale_<factor_name>",
     )
     factor_specs: list[FactorSpec]
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------
@@ -1353,7 +1353,7 @@ class StrategyTwinReport(BaseModel):
     causal_effects: list[CausalEffect]
     macro: MacroEnvironment
     verdict: str
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------
@@ -1388,7 +1388,7 @@ class VerificationReport(BaseModel):
     registry_hash: str = Field(..., description="SHA-256 hex digest of the YAML content")
     checks: list[VerificationCheck]
     overall: VerificationStatus
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TraceNodeType(str, Enum):
@@ -1413,7 +1413,7 @@ class TraceNode(BaseModel):
     model_id: str = Field(..., min_length=1)
     artifact_path: str = Field(..., description="Relative path from project root")
     content_hash: str = Field(..., description="SHA-256 hex digest of artifact content")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     parent_ids: list[str] = Field(default_factory=list)
 
 
@@ -1428,4 +1428,4 @@ class ForgeReport(BaseModel):
     verification: VerificationReport
     skeleton_code_path: str = Field(..., description="Path to generated impl_skeleton.py")
     trace_node_ids: list[str] = Field(..., description="Ordered node IDs created in this run")
-    produced_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

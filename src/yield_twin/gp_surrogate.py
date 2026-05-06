@@ -269,10 +269,12 @@ class GPSurrogate:
 
         Returns None if fewer than 3 observations or degenerate y.
         """
-        if self._X is None or len(self._X) < 3 or self._alpha is None:
+        X = self._X
+        y = self._y
+        alpha = self._alpha
+        if X is None or len(X) < 3 or alpha is None or y is None:
             return None
 
-        y = self._y
         var_y = float(np.var(y))
         if var_y < _EPS:
             return None
@@ -286,7 +288,7 @@ class GPSurrogate:
 
         K_inv_diag = np.diag(K_inv)
         safe = K_inv_diag > _EPS
-        loo_residuals = np.where(safe, self._alpha / K_inv_diag, y - y.mean())
+        loo_residuals = np.where(safe, alpha / K_inv_diag, y - y.mean())
         r2 = float(1.0 - np.mean(loo_residuals**2) / var_y)
         return float(np.clip(r2, -1.0, 1.0))
 

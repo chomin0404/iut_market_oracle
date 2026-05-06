@@ -31,7 +31,7 @@ Typical usage
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -119,7 +119,7 @@ def _dict_to_meta(d: dict) -> ExperimentMeta:
         note_path=d.get("note_path"),
         random_seed=d.get("random_seed"),
         tags=d.get("tags", []),
-        created_at=created_at or datetime.now(UTC),
+        created_at=created_at or datetime.now(timezone.utc),
         summary=d.get("summary", ""),
     )
 
@@ -228,7 +228,7 @@ def create_experiment(
         note_path=note_path,
         random_seed=random_seed,
         tags=tags or [],
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
         summary=summary,
     )
 

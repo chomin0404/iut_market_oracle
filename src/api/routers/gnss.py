@@ -183,7 +183,14 @@ def simulate(req: SimulateRequest) -> SimulateResponse:
         precision=report.precision,
         recall=report.recall,
         f1=report.f1,
-        by_attack_type={k: AttackTypeStat(**v) for k, v in report.by_attack_type.items()},
+        by_attack_type={
+            k: AttackTypeStat(
+                total=int(v["total"]),
+                detected=int(v["detected"]),
+                p_detect=float(v["p_detect"]),
+            )
+            for k, v in report.by_attack_type.items()
+        },
         quantum_detections=report.quantum_detections,
     )
 

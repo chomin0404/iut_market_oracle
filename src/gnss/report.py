@@ -34,6 +34,7 @@ import numpy as np
 from gnss.edge_collector import EdgeArrays
 
 if TYPE_CHECKING:
+    from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
     from gnss.mvp import _EpochRecord
@@ -102,19 +103,18 @@ def _extract_alert_levels(history: list[_EpochRecord]) -> list[str]:
     return [rec.action.alert.level.value for rec in history]
 
 
-def _add_failsafe_bands(ax: object, epochs: np.ndarray, levels: list[str]) -> None:
+def _add_failsafe_bands(ax: Axes, epochs: np.ndarray, levels: list[str]) -> None:
     """Shade background of *ax* by failsafe severity level."""
     import matplotlib.pyplot as plt  # noqa: PLC0415
 
-    axes = ax  # type: ignore[assignment]
-    ylim = axes.get_ylim()
+    ylim = ax.get_ylim()
     prev_lvl = levels[0]
     start_e = int(epochs[0])
 
     def _shade(e_start: int, e_end: int, lvl: str) -> None:
         color = _FAILSAFE_BAND_COLORS.get(lvl)
         if color is not None:
-            axes.axvspan(e_start - 0.5, e_end - 0.5, color=color, alpha=0.12, zorder=0)
+            ax.axvspan(e_start - 0.5, e_end - 0.5, color=color, alpha=0.12, zorder=0)
 
     for i, lvl in enumerate(levels[1:], start=1):
         if lvl != prev_lvl:
@@ -122,20 +122,19 @@ def _add_failsafe_bands(ax: object, epochs: np.ndarray, levels: list[str]) -> No
             start_e = int(epochs[i])
             prev_lvl = lvl
     _shade(start_e, int(epochs[-1]) + 1, prev_lvl)
-    axes.set_ylim(ylim)
+    ax.set_ylim(ylim)
     del plt  # imported only for type hint; axvspan via axes object
 
 
 def _add_event_vlines(
-    ax: object,
+    ax: Axes,
     epochs: np.ndarray,
     alert_levels: list[str],
 ) -> None:
     """Draw vertical event lines coloured by alert severity."""
-    axes = ax  # type: ignore[assignment]
     for e, lvl in zip(epochs, alert_levels):
         if lvl in ("caution", "warning", "critical"):
-            axes.axvline(
+            ax.axvline(
                 x=int(e),
                 color=_ALERT_COLORS[lvl],
                 linewidth=0.8,
@@ -150,7 +149,7 @@ def _add_event_vlines(
 
 
 def _panel_attack_evidence(
-    ax: object,
+    ax: Axes,
     arrays: EdgeArrays,
     alert_levels: list[str] | None,
     failsafe_levels: list[str] | None,
@@ -158,52 +157,50 @@ def _panel_attack_evidence(
     """Panel 1: fault_posterior time series + alert event markers."""
     import matplotlib.patches as mpatches  # noqa: PLC0415
 
-    axes = ax  # type: ignore[assignment]
     ep = arrays.epochs
     fp = arrays.fault_posterior
 
     for j, (col, lbl) in enumerate(zip(_FP_COLORS, _FP_LABELS)):
-        axes.plot(ep, fp[:, j], color=col, linewidth=1.5, label=lbl)
+        ax.plot(ep, fp[:, j], color=col, linewidth=1.5, label=lbl)
 
     # P(SPOOFING) fill
-    axes.fill_between(ep, fp[:, 3], alpha=0.20, color=_FP_COLORS[3])
+    ax.fill_between(ep, fp[:, 3], alpha=0.20, color=_FP_COLORS[3])
 
     if failsafe_levels is not None:
-        _add_failsafe_bands(axes, ep, failsafe_levels)
+        _add_failsafe_bands(ax, ep, failsafe_levels)
     if alert_levels is not None:
-        _add_event_vlines(axes, ep, alert_levels)
+        _add_event_vlines(ax, ep, alert_levels)
 
     # Legend for alert markers
     patches = [
         mpatches.Patch(color=_ALERT_COLORS[k], label=k.upper())
         for k in ("caution", "warning", "critical")
     ]
-    axes.legend(
-        handles=list(axes.get_lines()) + patches,
+    ax.legend(
+        handles=list(ax.get_lines()) + patches,
         loc="upper right",
         fontsize=7,
         ncol=4,
     )
-    axes.set_ylabel("Probability", fontsize=9)
-    axes.set_ylim(-0.02, 1.05)
-    axes.set_title("攻撃証拠 — Fault Posterior", fontsize=10, fontweight="bold")
-    axes.grid(axis="y", linewidth=0.4, alpha=0.5)
+    ax.set_ylabel("Probability", fontsize=9)
+    ax.set_ylim(-0.02, 1.05)
+    ax.set_title("攻撃証拠 — Fault Posterior", fontsize=10, fontweight="bold")
+    ax.grid(axis="y", linewidth=0.4, alpha=0.5)
 
 
 def _panel_doppler_residuals(
-    ax: object,
+    ax: Axes,
     arrays: EdgeArrays,
 ) -> None:
     """Panel 2: Doppler residual heatmap (epochs × sats)."""
     import matplotlib.pyplot as plt  # noqa: PLC0415
 
-    axes = ax  # type: ignore[assignment]
     ep = arrays.epochs
     n_sats = arrays.n_sats
     doppler = arrays.doppler_residuals  # (T, S)
 
     vmax = max(float(np.abs(doppler).max()), 0.01)
-    im = axes.imshow(
+    im = ax.imshow(
         doppler.T,
         aspect="auto",
         origin="lower",
@@ -212,28 +209,27 @@ def _panel_doppler_residuals(
         vmax=vmax,
         extent=[float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, n_sats - 0.5],
     )
-    cb = plt.colorbar(im, ax=axes, pad=0.01)
+    cb = plt.colorbar(im, ax=ax, pad=0.01)
     cb.set_label("Doppler residual [Hz]", fontsize=8)
     cb.ax.tick_params(labelsize=7)
 
-    axes.set_yticks(range(n_sats))
-    axes.set_yticklabels([f"SV{i}" for i in range(n_sats)], fontsize=7)
-    axes.set_ylabel("Satellite", fontsize=9)
-    axes.set_title("残差推移 — Doppler Residuals (epochs × sats)", fontsize=10, fontweight="bold")
+    ax.set_yticks(range(n_sats))
+    ax.set_yticklabels([f"SV{i}" for i in range(n_sats)], fontsize=7)
+    ax.set_ylabel("Satellite", fontsize=9)
+    ax.set_title("残差推移 — Doppler Residuals (epochs × sats)", fontsize=10, fontweight="bold")
 
 
 def _panel_entropy(
-    ax: object,
+    ax: Axes,
     arrays: EdgeArrays,
 ) -> None:
     """Panel 3: IMM mode weights + Shannon entropy + entropy alert markers."""
-    axes = ax  # type: ignore[assignment]
     ep = arrays.epochs
     mw = arrays.imm_mode_weights  # (T, 3)
     entropy = _shannon_entropy(mw)  # (T,)
 
     # Stacked area
-    axes.stackplot(
+    ax.stackplot(
         ep,
         mw[:, 0],
         mw[:, 1],
@@ -244,7 +240,7 @@ def _panel_entropy(
     )
 
     # Shannon entropy on secondary y-axis
-    ax2 = axes.twinx()  # type: ignore[union-attr]
+    ax2 = ax.twinx()
     ax2.plot(ep, entropy, color="#7f7f7f", linewidth=1.2, linestyle="--", label="H(μ)")
     ax2.set_ylabel("H(μ) [nats]", fontsize=8, color="#7f7f7f")
     ax2.tick_params(axis="y", labelcolor="#7f7f7f", labelsize=7)
@@ -263,17 +259,17 @@ def _panel_entropy(
             label="entropy_alert",
         )
 
-    axes.set_ylabel("IMM mode weight", fontsize=9)
-    axes.set_ylim(0.0, 1.05)
-    axes.legend(loc="upper left", fontsize=7)
+    ax.set_ylabel("IMM mode weight", fontsize=9)
+    ax.set_ylim(0.0, 1.05)
+    ax.legend(loc="upper left", fontsize=7)
     ax2.legend(loc="upper right", fontsize=7)
-    axes.set_title("エントロピー変化 — IMM Mode Weights & H(μ)", fontsize=10, fontweight="bold")
-    axes.grid(axis="y", linewidth=0.4, alpha=0.4)
+    ax.set_title("エントロピー変化 — IMM Mode Weights & H(μ)", fontsize=10, fontweight="bold")
+    ax.grid(axis="y", linewidth=0.4, alpha=0.4)
 
 
 def _panel_subset(
-    ax_heat: object,
-    ax_count: object,
+    ax_heat: Axes,
+    ax_count: Axes,
     arrays: EdgeArrays,
     sat_weights: np.ndarray | None,
 ) -> None:
@@ -284,9 +280,8 @@ def _panel_subset(
     n_sats = arrays.n_sats
 
     # Left: heatmap
-    axh = ax_heat  # type: ignore[assignment]
     if sat_weights is not None:
-        im = axh.imshow(
+        im = ax_heat.imshow(
             sat_weights.T,
             aspect="auto",
             origin="lower",
@@ -295,12 +290,12 @@ def _panel_subset(
             vmax=1.0,
             extent=[float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, n_sats - 0.5],
         )
-        cb = plt.colorbar(im, ax=axh, pad=0.01)
+        cb = plt.colorbar(im, ax=ax_heat, pad=0.01)
         cb.set_label("weight", fontsize=7)
         cb.ax.tick_params(labelsize=6)
     else:
         # Fallback: show gmm_gamma
-        im = axh.imshow(
+        im = ax_heat.imshow(
             arrays.gmm_gamma.T,
             aspect="auto",
             origin="lower",
@@ -309,49 +304,49 @@ def _panel_subset(
             vmax=1.0,
             extent=[float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, n_sats - 0.5],
         )
-        cb = plt.colorbar(im, ax=axh, pad=0.01)
+        cb = plt.colorbar(im, ax=ax_heat, pad=0.01)
         cb.set_label("GMM γ", fontsize=7)
         cb.ax.tick_params(labelsize=6)
 
-    axh.set_yticks(range(n_sats))
-    axh.set_yticklabels([f"SV{i}" for i in range(n_sats)], fontsize=7)
-    axh.set_ylabel("Satellite", fontsize=9)
+    ax_heat.set_yticks(range(n_sats))
+    ax_heat.set_yticklabels([f"SV{i}" for i in range(n_sats)], fontsize=7)
+    ax_heat.set_ylabel("Satellite", fontsize=9)
     title = "選択 Subset — Satellite Weights" if sat_weights is not None else "GMM γ per SV"
-    axh.set_title(title, fontsize=10, fontweight="bold")
+    ax_heat.set_title(title, fontsize=10, fontweight="bold")
 
     # Right: n_active / n_excluded bar
-    axc = ax_count  # type: ignore[assignment]
-    axc.step(ep, arrays.n_active, where="post", color="#2ca02c", linewidth=1.5, label="n_active")
-    axc.step(
+    ax_count.step(
+        ep, arrays.n_active, where="post", color="#2ca02c", linewidth=1.5, label="n_active"
+    )
+    ax_count.step(
         ep, arrays.n_excluded, where="post",
         color="#d62728", linewidth=1.5, linestyle="--", label="n_excluded",
     )
-    axc.set_ylabel("Satellite count", fontsize=9)
-    axc.set_ylim(0, n_sats + 1)
-    axc.legend(fontsize=7)
-    axc.set_title("Active / Excluded Count", fontsize=10, fontweight="bold")
-    axc.grid(axis="y", linewidth=0.4, alpha=0.5)
+    ax_count.set_ylabel("Satellite count", fontsize=9)
+    ax_count.set_ylim(0, n_sats + 1)
+    ax_count.legend(fontsize=7)
+    ax_count.set_title("Active / Excluded Count", fontsize=10, fontweight="bold")
+    ax_count.grid(axis="y", linewidth=0.4, alpha=0.5)
 
 
 def _panel_confidence(
-    ax: object,
+    ax: Axes,
     arrays: EdgeArrays,
     failsafe_levels: list[str] | None,
 ) -> None:
     """Panel 5: confidence + ins_weight + failsafe bands + mc_auc scatter."""
-    axes = ax  # type: ignore[assignment]
     ep = arrays.epochs
 
     if failsafe_levels is not None:
-        _add_failsafe_bands(axes, ep, failsafe_levels)
+        _add_failsafe_bands(ax, ep, failsafe_levels)
 
-    axes.plot(ep, arrays.confidence, color="#1f77b4", linewidth=1.5, label="confidence")
-    axes.plot(ep, arrays.ins_weight, color="#ff7f0e", linewidth=1.5, label="ins_weight")
+    ax.plot(ep, arrays.confidence, color="#1f77b4", linewidth=1.5, label="confidence")
+    ax.plot(ep, arrays.ins_weight, color="#ff7f0e", linewidth=1.5, label="ins_weight")
 
     # mc_auc scatter (non-NaN epochs only)
     valid = ~np.isnan(arrays.mc_auc)
     if valid.any():
-        axes.scatter(
+        ax.scatter(
             ep[valid],
             arrays.mc_auc[valid],
             marker="D",
@@ -362,16 +357,16 @@ def _panel_confidence(
         )
 
     # INS_ONLY and DEAD_RECKONING reference lines
-    axes.axhline(y=0.90, color="#d62728", linewidth=0.7, linestyle=":", alpha=0.6)
-    axes.axhline(y=0.45, color="#ff7f0e", linewidth=0.7, linestyle=":", alpha=0.6)
+    ax.axhline(y=0.90, color="#d62728", linewidth=0.7, linestyle=":", alpha=0.6)
+    ax.axhline(y=0.45, color="#ff7f0e", linewidth=0.7, linestyle=":", alpha=0.6)
 
-    axes.set_ylabel("Weight / Confidence", fontsize=9)
-    axes.set_ylim(-0.02, 1.08)
-    axes.legend(loc="upper right", fontsize=7)
-    axes.set_title(
+    ax.set_ylabel("Weight / Confidence", fontsize=9)
+    ax.set_ylim(-0.02, 1.08)
+    ax.legend(loc="upper right", fontsize=7)
+    ax.set_title(
         "推定信頼度 — Confidence, INS Weight & Failsafe", fontsize=10, fontweight="bold"
     )
-    axes.grid(axis="y", linewidth=0.4, alpha=0.5)
+    ax.grid(axis="y", linewidth=0.4, alpha=0.5)
 
 
 # ---------------------------------------------------------------------------
