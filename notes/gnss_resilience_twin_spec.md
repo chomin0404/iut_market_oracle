@@ -8,6 +8,9 @@
      [F5] State Posterior 合計制約明示: §13.5 StatePosterior 不変量を追加
      [F6] PVTReestimate 出力定義: §14.2 PVTReestimateResult を新設
      [F7] 既存実装との対応表修正: §14 を Layer 1–10 の一貫番号体系に統一、EpochDiagnosis フィールドパスを追加
+     [F8] OSNMA 検証モデル深化: §21 TESLA 5チェック階層・per-satellite AuthState・Bayesian仰角加重・攻撃パターン対応表を追記
+     [F9] calibrate スキーマ定義: §22 CalibrateRequest/CalibrateResult/POST /v1/calibrate を追記
+     [F10] pagination 設計: §23 cursor-based pagination (エポック列挙・レポート一覧) を追記
 -->
 
 ---
@@ -123,9 +126,12 @@ MC シミュレーション 1 試行の注入条件。`run_resilience_simulation
 | メソッド | パス | 説明 |
 |---|---|---|
 | `POST` | `/v1/analyze` | 観測シーケンスを送信して分析を開始 |
+| `GET` | `/v1/reports` | レポート一覧 (cursor-based pagination) — §23.2 |
 | `GET` | `/v1/reports/{run_id}` | 分析結果の取得 (realtime / batch 共通) |
 | `GET` | `/v1/reports/{run_id}/status` | 処理状態のみを取得 (batch ポーリング用) |
+| `GET` | `/v1/reports/{run_id}/epochs` | エポックレポートの分割取得 — §23.3 |
 | `DELETE` | `/v1/reports/{run_id}` | 結果の削除 |
+| `POST` | `/v1/calibrate` | 正常観測窓から雑音パラメータを推定 — §22 |
 | `POST` | `/v1/simulate` | MC ベンチマーク実行 |
 | `GET` | `/v1/health` | ヘルスチェック |
 
@@ -575,3 +581,418 @@ report = run_resilience_simulation(cfg)
 2. **Failsafe 降下の即時性** — 回復条件変更時は `test_failsafe_descent_immediate` を追加。
 3. **IMUResidual の単位一貫性** — `ins_noise_std` を変更した場合、`mahalanobis_dist` の閾値 (2.795) が p=0.95 水準を維持することを確認。
 4. **run_id の冪等非保証** — 同一リクエストの再送で異なる `run_id` が生成されることは仕様。キャッシュが必要な場合はクライアント側でリクエストハッシュを管理する。
+
+---
+
+## 21. OSNMA 検証モデル深化
+
+<!-- [F8] TESLA 5チェック階層・per-satellite AuthState・Bayesian 仰角加重・攻撃パターン対応表 -->
+
+### 21.1 TESLA プロトコル検証フロー
+
+TESLA (Timed Efficient Stream Loss-tolerant Authentication) は Galileo OSNMA の中核暗号プロトコル。
+受信機は鍵開示遅延 δ = `DISCLOSURE_DELAY` (= 2 サブフレーム) 後に各メッセージを後方検証する。
+
+#### 21.1.1 ハッシュチェーン構造
+
+```
+K_0 ←H K_1 ←H K_2 ←H ... ←H K_{n-1}   (右端 = root)
+
+K_i = SHA-256( K_{i+1} || LE32(i) ) [:KEY_BYTES]
+KEY_BYTES = 16 (128-bit, OSNMA SIS ICD v1.1)
+```
+
+検証規則: 既認証アンカー `K_{i_a}` から候補 `K_i` を確認するには
+`hash^{i_a − i}(K_{i_a}) == K_i` を計算する。
+
+#### 21.1.2 5 チェック階層
+
+| # | チェック名 | 判定条件 | 対応する実装フィールド |
+|---|---|---|---|
+| 1 | `key_chain` | `hash^δ(K_{i+δ}) == K_i` | `VerificationResult.key_valid` |
+| 2 | `receipt_safe` | `t_receive < t_disclose = i + δ` | `VerificationResult.receipt_safe` |
+| 3 | `mac_valid` | `HMAC-SHA256(K_i, payload)[:MAC_BYTES] == mac_tag` | `VerificationResult.mac_valid` |
+| 4 | `quantum_fidelity` | `F(eph_received, eph_expected) > τ_q = 0.85` | `VerificationResult.quantum_anomaly` (反転) |
+| 5 | `chain_continuity` | `∃ anchor_epoch > i` (verified keys dict は空でない) | `OSNMAReceiver._verified_keys` が非空 |
+
+**総合判定**:
+
+```
+detected = NOT(key_chain AND receipt_safe AND mac_valid) OR quantum_anomaly
+```
+
+チェック 1–3 = Galileo OSNMA SIS ICD v1.1 標準検証。
+チェック 4 = 量子耐性拡張 (`QuantumFidelityDetector`)。`key_compromise` 攻撃への対策。
+チェック 5 = 実装固有。`_verified_keys` が空の場合 `key_valid = False` を強制。
+
+#### 21.1.3 攻撃パターンと検出チェーン
+
+| 攻撃種別 | key_chain | receipt_safe | mac_valid | quantum_fidelity | 検出率 |
+|---|---|---|---|---|---|
+| `naive_replay` | **✗** | — | — | — | 100 % |
+| `modified_replay` | ✓ | ✓ | **✗** | — | 100 % |
+| `key_disclosure` | ✓ | **✗** | ✓ | — | 100 % |
+| `late_injection` | ✓ | **✗** | ✓ | — | 100 % |
+| `key_compromise` | ✓ | ✓ | ✓ | **✗** | ≈ attack_prob (量子層のみ) |
+
+`key_compromise` はすべての TESLA チェックを通過し、量子忠実度レイヤのみで検出される。
+`quantum_detections` フィールド (`SimReport`) で独立に計上する。
+
+### 21.2 per-satellite 認証状態型 SatelliteAuthState
+
+1 衛星・1 エポックの完全な認証状態を表す型。`VerificationResult`（`gnss/core.py`）に 1 対 1 で対応する。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `svid` | `int` | 衛星番号 (Galileo: 1–36, GPS: 1–32) |
+| `epoch` | `int` | バッファエポック番号 (メッセージが受信されたエポック) |
+| `key_valid` | `bool` | チェック 1: TESLA チェーン検証結果 |
+| `mac_valid` | `bool` | チェック 3: HMAC-SHA256 検証結果 |
+| `receipt_safe` | `bool` | チェック 2: 受信タイミング安全性 |
+| `quantum_anomaly` | `bool` | チェック 4: エフェメリス量子忠実度 < τ_q = 0.85 |
+| `detected` | `bool` | `NOT(key ∧ receipt ∧ mac) OR quantum_anomaly` |
+| `chain_gap` | `bool` | チェック 5: `_verified_keys` にアンカーが存在しない場合 True |
+
+`SatelliteAuthState` は将来 `OSNMALayerResult` の `per_sat: list[SatelliteAuthState]` として露出予定。
+現行 API では `EpochReport.osnma_auth_fraction` に集約されている。
+
+### 21.3 Bayesian 認証ポスタリア (仰角加重集計)
+
+現行実装は単純算術平均 `auth_fraction = n_auth / n_total`。
+深化版では衛星間独立性仮定のもとで仰角加重積を使う:
+
+```
+w_i = sin²(el_i)                              # 仰角加重 (高仰角 → 信頼度大)
+
+P_auth_i = 1.0   if key_valid ∧ receipt_safe ∧ mac_valid ∧ NOT quantum_anomaly
+         = 0.0   otherwise
+
+P_genuiness = (Σ_i w_i · P_auth_i) / (Σ_i w_i)   # 加重平均
+
+p_spoof_bayes = 1 − P_genuiness                    # 融合スコアへの寄与
+```
+
+**現行実装との差分**:
+
+| 属性 | 現行 | 深化版 |
+|---|---|---|
+| 集計方式 | 算術平均 `n_auth/n_total` | 仰角加重平均 |
+| 入力 | `list[bool]` | `list[SatelliteAuthState]` + `elevations` |
+| 実装箇所 | `OSNMALayer.assess()` | 同メソッドに `elevations: np.ndarray \| None` 引数追加 |
+| 融合スコアへの反映 | `score[spoofing] += 0.20 * (1 − auth_fraction)` | `score[spoofing] += 0.20 * p_spoof_bayes` |
+
+仰角データがない場合は等重み (`w_i = 1`) にフォールバックし、現行と等価になる。
+
+### 21.4 鍵チェーン継続性の追跡
+
+`_verified_keys: dict[int, bytes]` のギャップ（検証済み鍵がないエポック区間）はチェーン中断を示す。
+
+| 状態 | anchor の有無 | key_valid | 推奨対応 |
+|---|---|---|---|
+| 正常 | 近傍に存在 | True / False (メッセージ依存) | 通常フロー |
+| チェーン中断 | None | False（強制） | `chain_gap_alert = True` を付与 |
+| 遅延開示 | 後続エポックで到着 | True | `flush_expired()` で事後検証 |
+
+`chain_gap_alert` フィールドを `OSNMALayerResult` に追加予定:
+
+```python
+# 追加予定フィールド (現行実装では未実装)
+chain_gap_alert: bool   # True if _verified_keys が空で key_chain チェックが実行不可能
+consecutive_gap: int    # chain_gap が続いた連続エポック数
+```
+
+### 21.5 ResilienceTwin との統合
+
+4 本柱融合スコアへの OSNMA の寄与（Layer 1）:
+
+```
+# 現行 (gnss/resilience_twin.py: _score_fusion())
+score[spoofing] += 0.20 * (1 − auth_fraction)   # = OSNMALayerResult.p_spoof_contribution
+
+# 深化版（仰角加重 Bayesian 集計に置き換え）
+score[spoofing] += 0.20 * p_spoof_bayes          # = 仰角加重 P(spoofed)
+```
+
+フル TESLA 検証（`VerificationResult` を直接入力とする経路）を組み込むには、
+`run_twin_on_observations()` の `osnma_sequence` 引数の型を
+`list[list[bool] | None]` から `list[list[SatelliteAuthState] | None]` に変更する必要がある。
+後方互換性のため `list[bool]` 形式を受けた場合は全チェックを `True` として扱う移行オプションを提供する。
+
+---
+
+## 22. Calibrate エンドポイント
+
+<!-- [F9] CalibrateRequest / CalibrateResult / POST /v1/calibrate スキーマ定義 -->
+
+### 22.1 目的
+
+受信機の公称雑音パラメータを**既知-正常な観測窓**から統計的に推定し、
+後続の `POST /v1/analyze` / `POST /v1/twin/run` の初期化パラメータとして使用する。
+
+キャリブレーション後のパラメータを適用することで、デフォルト値
+(`doppler_noise_std=0.30 Hz`, `ins_noise_std=0.05 m/s`) からの乖離による偽陽性アラートを低減できる。
+
+> **前提**: `observations` に含まれるエポックが**全て正常動作中**であることをユーザが保証する。
+> 攻撃が混入した窓でキャリブレーションを行うと過大な雑音推定値が得られる。
+
+### 22.2 CalibrateRequest
+
+| フィールド | 型 | 必須 | デフォルト | 説明 |
+|---|---|---|---|---|
+| `observations` | `ObservationEpoch[]` | Y | — | 正常観測窓 (5–500 件) |
+| `n_sats` | `int` | N | `6` | 衛星数 (5–20) |
+| `los_vectors` | `float[n_sats][3] \| null` | N | `null` | 既知の LOS ベクトル。省略時は Fibonacci 格子を自動生成 |
+| `confidence_level` | `float` | N | `0.95` | χ² 適合検定の有意水準 ∈ (0, 1) |
+| `fit_ins_noise` | `bool` | N | `true` | INS 雑音を推定するか。INS データがない場合は自動スキップ |
+| `fit_graph_sigma` | `bool` | N | `true` | グラフカーネル帯域幅 σ を Fiedler null model から推定するか |
+
+> 観測数が少ないほど推定精度が低下する。**最低 30 エポック以上**を推奨。
+
+### 22.3 CalibrateResult
+
+| フィールド | 型 | 単位 | 説明 |
+|---|---|---|---|
+| `doppler_noise_std` | `float` | Hz | 推定ドップラー雑音 1σ |
+| `ins_noise_std` | `float \| null` | m/s | 推定 INS 速度雑音 1σ。INS データなしの場合 `null` |
+| `graph_sigma` | `float` | Hz | 推定グラフカーネル帯域幅 σ |
+| `gmm_fault_prior` | `float` | — | 推定 GM-RAIM 障害事前確率 ∈ [0, 1] |
+| `n_epochs_used` | `int` | — | 実際に推定に使用したエポック数 |
+| `doppler_chi2_stat` | `float` | — | ドップラーデータの χ² 適合検定統計量 |
+| `doppler_chi2_pvalue` | `float` | — | 対応する p 値 (< `confidence_level` → 正規分布仮定棄却) |
+| `ins_chi2_pvalue` | `float \| null` | — | INS データの χ² 検定 p 値 (`null` if INS なし) |
+| `fit_quality` | `"good" \| "marginal" \| "poor"` | — | 推定品質サマリー |
+| `warnings` | `string[]` | — | 注意事項 (例: 観測数不足、非正規性検出) |
+
+#### fit_quality 判定基準
+
+| 判定 | 条件 |
+|---|---|
+| `good` | `doppler_chi2_pvalue ≥ confidence_level` かつ `n_epochs_used ≥ 30` |
+| `marginal` | `doppler_chi2_pvalue ≥ 0.05` かつ `n_epochs_used ≥ 10` |
+| `poor` | 上記以外（キャリブレーション結果の信頼性が低い） |
+
+### 22.4 推定アルゴリズム
+
+```
+# Step 1: Doppler 雑音推定 (MLE under Gaussian assumption)
+all_residuals = flatten(obs.doppler_residuals for obs in observations)
+μ̂_D = mean(all_residuals)
+σ̂_D = std(all_residuals − μ̂_D)          # unbiased std (ddof=1)
+
+# Gaussianity test: 10-bin χ² goodness-of-fit
+chi2_stat, p_value = chi2_gof(all_residuals, dist=N(μ̂_D, σ̂_D), n_bins=10)
+
+# Step 2: INS 雑音推定 (if fit_ins_noise and data available)
+ins_norms = [‖obs.ins_velocity_ms‖₂ for obs in observations if obs.ins_velocity_ms is not None]
+σ̂_ins = std(ins_norms) / sqrt(3)          # 各軸独立仮定、L2 ノルムから逆算
+         if len(ins_norms) >= 5 else None
+
+# Step 3: グラフ帯域幅推定 (if fit_graph_sigma)
+# σ* = argmin |mean(ρ_F(σ)) − 1.0|  via bisection on σ ∈ [0.1, 10.0]
+def mean_fiedler(σ):
+    return mean(SpectralMonitor(σ).analyze(obs).fiedler_ratio for obs in observations)
+σ̂_graph = bisect(lambda σ: mean_fiedler(σ) − 1.0, lo=0.1, hi=10.0, tol=1e-3)
+
+# Step 4: GMM 障害事前確率推定
+# GMMRaim を推定済み σ̂_D で実行し、gmm_n_fault > 0 となるエポック割合
+gmm_fault_prior = count(epochs with gmm_n_fault > 0) / n_epochs_used
+```
+
+**定数**:
+- 等方性仮定: `Σ = σ̂_D² · I` (ドップラー共分散)
+- χ² 適合検定の bin 数: 10（外れ値の少ない範囲 `μ̂ ± 3σ̂` を等区間分割）
+
+### 22.5 エンドポイント定義
+
+```
+POST /v1/calibrate
+Content-Type: application/json
+```
+
+**レスポンス: 200 OK** — `CalibrateResult`
+
+**エラーレスポンス**:
+
+| HTTP コード | 条件 |
+|---|---|
+| `400 Bad Request` | 衛星数不一致、観測件数 < 5 |
+| `422 Unprocessable Entity` | `confidence_level` 範囲外 (≤ 0 or ≥ 1) |
+
+**典型的な使用パターン**:
+
+```python
+# Step 1: キャリブレーション (正常窓)
+cal = POST("/v1/calibrate", {
+    "observations": nominal_window,   # 30+ エポックの正常観測
+    "n_sats": 8,
+    "fit_graph_sigma": True,
+})
+# → CalibrateResult { doppler_noise_std: 0.28, graph_sigma: 1.42,
+#                     ins_noise_std: 0.047, fit_quality: "good" }
+
+# Step 2: キャリブレーション結果を使って分析
+POST("/v1/analyze", {
+    "observations": monitoring_window,
+    "n_sats": 8,
+    "doppler_noise_std": cal["doppler_noise_std"],
+    "graph_sigma": cal["graph_sigma"],
+    "ins_noise_std": cal["ins_noise_std"],
+})
+```
+
+---
+
+## 23. Pagination 設計
+
+<!-- [F10] cursor-based pagination: エポックレポート分割取得・レポート一覧 -->
+
+### 23.1 設計方針
+
+`epoch_reports` は最大 5000 エポック（未圧縮 JSON で数 MB）に達する可能性がある。
+`GET /v1/reports` 一覧もデプロイ規模に応じて増大する。
+
+**カーソルベースを採用する理由**:
+
+| 比較軸 | オフセットベース (skip/limit) | カーソルベース (after_X) |
+|---|---|---|
+| 中間挿入 | ページ境界が「ずれる」 | 影響なし |
+| 一貫性 | 弱い | 強い |
+| 実装コスト | 低 | 低 (epoch は整数、run_id は UUID v7) |
+| 任意ジャンプ | 可能 | 不可 (先頭・特定 epoch への直接アクセスは別途) |
+
+`epoch` は単調増加整数のため `after_epoch` カーソルをそのまま整数値として使える。
+`run_id` は UUID v7（時刻ソート可能）のため `after_run_id` カーソルも不透明化不要。
+
+### 23.2 GET /v1/reports — レポート一覧
+
+```
+GET /v1/reports?limit=20&after_run_id=018f4b2e-7c3a-7d45-b891-0a1234567890&status=completed
+```
+
+#### クエリパラメータ
+
+| パラメータ | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `limit` | `int` | `20` | 返却件数 (1–100) |
+| `after_run_id` | `string \| null` | `null` | このUUID v7 の直後から返す（初回は省略） |
+| `status` | `"completed" \| "running" \| "failed" \| null` | `null` | 状態フィルタ。省略時は全状態 |
+| `since` | `datetime \| null` | `null` | 指定 UTC 日時以降の `run_id` のみ (ISO 8601) |
+
+#### レスポンス: 200 OK — ReportListPage
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `items` | `ReportSummary[]` | このページのサマリー一覧 (run_id 昇順) |
+| `next_cursor` | `string \| null` | 次ページ先頭 `run_id`。`null` = 最終ページ |
+| `total_count` | `int \| null` | フィルタ条件に一致する総件数。コスト高の場合 `null` 許可 |
+
+#### ReportSummary (軽量型)
+
+`epoch_reports` を含まない軽量型。全件取得は `/reports/{run_id}` または `/epochs` を使用。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `run_id` | `string` | UUID v7 |
+| `created_at` | `datetime` | 生成タイムスタンプ (UTC) |
+| `status` | `"completed" \| "running" \| "failed"` | 処理状態 |
+| `n_epochs` | `int \| null` | 処理エポック数 (未完了時は `null`) |
+| `dominant_diagnosis` | `string \| null` | MAP 診断 (未完了時は `null`) |
+| `worst_action` | `RecommendedAction \| null` | 最悪アクション (未完了時は `null`) |
+
+### 23.3 GET /v1/reports/{run_id}/epochs — エポックレポートの分割取得
+
+```
+GET /v1/reports/018f4b2e-7c3a-7d45-b891-0a1234567890/epochs?limit=100&after_epoch=199
+```
+
+#### クエリパラメータ
+
+| パラメータ | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `limit` | `int` | `100` | 返却エポック数 (1–500) |
+| `after_epoch` | `int \| null` | `null` | このエポック番号の直後から返す（初回は省略） |
+
+#### レスポンス: 200 OK — EpochReportPage
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `run_id` | `string` | 対象 run_id |
+| `items` | `EpochReport[]` | `epoch` 昇順の EpochReport リスト |
+| `next_cursor` | `int \| null` | 次ページ先頭 epoch 番号。`null` = 最終ページ |
+| `total_epochs` | `int` | このレポートの全エポック数 |
+| `page_first_epoch` | `int` | このページ最初の epoch 番号 |
+| `page_last_epoch` | `int` | このページ最後の epoch 番号 |
+
+**エラーレスポンス**:
+
+| HTTP コード | 条件 |
+|---|---|
+| `404 Not Found` | `run_id` が存在しない |
+| `400 Bad Request` | `limit` が範囲外 (< 1 または > 500) |
+| `202 Accepted` | 処理中 (`status == "running"`) — `items` は空、`total_epochs` は暫定値 |
+
+### 23.4 AnalysisResult への埋め込みページネーション
+
+`GET /v1/reports/{run_id}` は `status == "completed"` のとき、デフォルトで
+**先頭 100 エポックのみ** `epoch_reports` に含める。
+全件取得には `/epochs` エンドポイントを使用する。
+
+`AnalysisResult` への追加フィールド:
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `epoch_reports_truncated` | `bool` | `true` のとき `epoch_reports` は全エポックの部分集合 |
+| `epoch_reports_next_cursor` | `int \| null` | `truncated == true` のとき続きの `after_epoch` 値 |
+
+```json
+{
+  "run_id": "018f4b2e-...",
+  "status": "completed",
+  "n_epochs": 5000,
+  "epoch_reports": [ /* epoch 0–99 のみ */ ],
+  "epoch_reports_truncated": true,
+  "epoch_reports_next_cursor": 100
+}
+```
+
+### 23.5 カーソルエンコード仕様
+
+| エンドポイント | カーソルフィールド | 型 | 不透明化 | 例 |
+|---|---|---|---|---|
+| `GET /v1/reports` | `after_run_id` | UUID v7 文字列 | 不要 (時刻ソート可能) | `018f4b2e-7c3a-7d45-b891-0a1234567890` |
+| `GET /v1/reports/{id}/epochs` | `after_epoch` | 整数 | 不要 (単調増加) | `199` |
+
+カーソルが指す項目自体は返却しない（exclusive lower bound）。
+カーソルを偽造しても取得できるのは自身のデータのみであり、認可制御は `run_id` スコープで行う。
+
+### 23.6 クライアント実装例
+
+```python
+# 全エポックを逐次取得するジェネレータ
+def iter_epoch_reports(run_id: str, page_size: int = 200):
+    after_epoch = None
+    while True:
+        params: dict = {"limit": page_size}
+        if after_epoch is not None:
+            params["after_epoch"] = after_epoch
+        page = GET(f"/v1/reports/{run_id}/epochs", params=params)
+        yield from page["items"]
+        if page["next_cursor"] is None:
+            break
+        after_epoch = page["next_cursor"]
+
+# レポート一覧を全件取得
+def iter_all_reports(status: str | None = None):
+    after_run_id = None
+    while True:
+        params: dict = {"limit": 100}
+        if after_run_id is not None:
+            params["after_run_id"] = after_run_id
+        if status is not None:
+            params["status"] = status
+        page = GET("/v1/reports", params=params)
+        yield from page["items"]
+        if page["next_cursor"] is None:
+            break
+        after_run_id = page["next_cursor"]
+```
