@@ -425,7 +425,11 @@ class IMMKalman:
         ]
 
         self._Pi = np.array(_IMM_TRANSITION, dtype=float)  # (3, 3) row-stochastic
-        self._mu = np.ones(3) / 3.0  # uniform initial mode probs
+        # Nominal-biased prior: P(genuine)=0.97 matches _FEL_PRIOR[0].
+        # Uniform (1/3) prior caused s_mp = 1/3 + 0.40*elev_corr > s_nom = 1/3
+        # at epoch 0, driving spurious MULTIPATH / SPOOFING classifications in
+        # genuine trials before the IMM had observed any data.
+        self._mu = np.array([0.97, 0.015, 0.015])
         self._x = [np.zeros(4) for _ in range(3)]
         self._P = [_IMM_P_INIT * np.eye(4) for _ in range(3)]
 
