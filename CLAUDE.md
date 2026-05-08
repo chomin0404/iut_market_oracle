@@ -81,3 +81,183 @@ Hook automation:
 | `/modelforge-trace <id>` | Show DAG for a model |
 | `/modelforge-audit` | Tail audit log |
 | `/modelforge-report <id\|all>` | Generate markdown report from forge artifacts |
+
+---
+
+## Project Overview
+
+This repository builds GNSS Resilience Twin as a testable, explainable mathematical MVP.
+The system ingests observation logs and returns anomaly analysis with traceable outputs.
+
+Primary goals:
+- detect spoofing-related anomalies from observation sequences
+- produce explainable outputs, not only binary alarms
+- preserve reproducibility and traceability
+- support CLI-driven experiments and report generation
+
+---
+
+## Core Workflow
+
+Always follow this order:
+
+1. Explore
+2. Plan
+3. Implement
+4. Verify
+5. Summarize
+
+Do not skip directly to implementation unless the user explicitly asks for a tiny local edit.
+
+---
+
+## Explore Rules
+
+Before writing code:
+- inspect relevant files
+- summarize current behavior
+- identify dependencies and data flow
+- list unclear assumptions
+- check whether similar logic already exists
+
+When the task is ambiguous:
+- ask a clarifying question, or
+- propose 2-3 interpretations and choose the smallest safe one
+
+---
+
+## Plan Rules
+
+Before coding, provide:
+- target files
+- intended behavior change
+- tests to add or update
+- acceptance criteria
+- risks and tradeoffs
+
+Planning principles:
+- prefer the smallest viable diff
+- prefer schema-first design
+- prefer config-driven behavior when appropriate
+- avoid broad refactors unless explicitly requested
+- keep unrelated files unchanged
+
+---
+
+## Implement Rules
+
+When implementing:
+- change only files relevant to the approved plan
+- keep functions focused and names explicit
+- avoid hidden state and magic constants
+- preserve traceability fields such as run_id, config, and outputs
+- prefer deterministic behavior when possible
+- do not invent unsupported claims, metrics, or pseudo-results
+
+For mathematical logic:
+- keep formulas and assumptions explicit
+- separate model logic from I/O and CLI glue
+- prefer modular components over monolithic scripts
+
+---
+
+## Verify Rules
+
+Every meaningful change must include at least one of:
+- unit test
+- integration test
+- reproducible CLI run
+- saved output artifact
+
+Verification checklist:
+- does it match the requested scope?
+- do tests pass?
+- does the output schema remain stable?
+- are artifacts saved under output/ when appropriate?
+- are risks and limitations stated clearly?
+
+If verification fails:
+- explain the failure before revising
+- do not claim success without evidence
+
+If three implementation attempts fail:
+- stop coding
+- switch to architecture review mode
+- propose a smaller task split
+
+---
+
+## Output and Reporting
+
+When completing a task, always report:
+- changed files
+- tests run
+- outputs generated
+- remaining risks
+- next recommended step
+
+When generating artifacts:
+- save final outputs under output/
+- use stable, descriptive filenames
+- prefer machine-readable formats such as JSON and CSV
+
+---
+
+## Coding Style
+
+- Prefer readability over cleverness.
+- Prefer explicit schemas over ad-hoc dicts.
+- Prefer small modules with clear responsibilities.
+- Keep comments short and structural.
+- Avoid premature abstraction.
+- Do not silently change public behavior.
+
+---
+
+## Repository Priorities
+
+Priority order:
+1. correctness
+2. verifiability
+3. traceability
+4. explainability
+5. extensibility
+6. optimization
+
+Do not sacrifice correctness and verification for speed.
+
+---
+
+## GNSS-Specific Guidance
+
+For GNSS anomaly tasks:
+- separate genuine and spoofing scenarios
+- track false alarm rate and detection delay
+- preserve score components and reasons
+- record config, seed, and run_id
+- prefer explainable alarm logic over opaque heuristics when possible
+
+Typical outputs may include:
+- risk_score
+- alarm
+- suspicious_subset
+- score_components
+- reasons
+- metrics summary
+
+---
+
+## Prompting Pattern
+
+Use this default pattern unless instructed otherwise:
+
+Task:
+[one-sentence task]
+
+First do not code.
+1. Explore relevant files and summarize current behavior.
+2. Propose the smallest implementation plan.
+3. List target files, tests, and acceptance criteria.
+4. Then implement only the approved scope.
+5. Verify with tests and/or reproducible execution.
+6. Summarize changed files, outputs, and remaining risks.
