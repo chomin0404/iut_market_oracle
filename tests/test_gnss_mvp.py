@@ -312,7 +312,8 @@ class TestActionPlanner:
         assert "diagnosis=" in result.reason
 
     def test_ins_weight_equals_weighted_sum(self) -> None:
-        # Manually check the weighted sum formula using known fault_posterior
+        # Cold-start first call: EMA initialises to w_raw, so ins_weight = clip(w_raw, floor, ceil)
+        # where floor/ceil come from the failsafe state determined by that same fault_posterior.
         planner = ActionPlanner()
         td = self._make_twin_diag(_nominal_doppler())
         obs = self._make_obs()
@@ -324,7 +325,10 @@ class TestActionPlanner:
             _INS_WEIGHT_BY_CLASS[FaultClass.HARDWARE_FAULT],
             _INS_WEIGHT_BY_CLASS[FaultClass.SPOOFING],
         ]
-        expected = float(np.clip(sum(p * w for p, w in zip(fp, weights)), 0.0, 1.0))
+        w_raw = float(np.clip(sum(p * w for p, w in zip(fp, weights)), 0.0, 1.0))
+        expected = float(
+            np.clip(w_raw, result.failsafe.ins_weight_floor, result.failsafe.ins_weight_ceil)
+        )
         assert result.ins_weight == pytest.approx(expected, abs=1e-9)
 
 
