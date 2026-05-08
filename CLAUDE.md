@@ -2,6 +2,8 @@
 
 See @README.md for project overview and usage, @pyproject.toml for package/tool settings, @Makefile for canonical commands, and @configs/dependency_edges.yaml for editable dependency structure.
 
+See @docs/problem_formulation.md for the task formalization template and @docs/verification_checklist.md for the verification checklist.
+
 ## Purpose
 - Maintain a research-grade end-to-end pipeline: **math spec (YAML) → verify → skeleton code → trace → audit → report → CI**.
 - Every model must exist first as a registry YAML; code without a verified YAML spec is prohibited.
