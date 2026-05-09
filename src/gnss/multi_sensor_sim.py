@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from gnss.spoof_sim import _compute_roc
+from gnss.math_utils import _compute_roc
 from schemas import MSRunResult, MSRunTrace, MSSimReport
 
 # ---------------------------------------------------------------------------

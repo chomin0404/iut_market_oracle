@@ -26,18 +26,21 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.stats import chi2 as _chi2_dist
 
-# Private helpers and constants imported from T1300 spoofing sim
-from gnss.spoof_sim import (
+# Shared signal constants (own source of truth, independent of simulation layer)
+from gnss.constants import (
     _DIRICHLET_ALPHA,
     _DOPPLER_NOISE_STD,
     _GRAPH_SIGMA,
     _INS_CLOCK_STD,
     _INS_VEL_STD,
-    _build_graph,
-    _compute_roc,
+)
+
+# Geometry / graph / ROC utilities (pure math, no simulation dependencies)
+from gnss.math_utils import _build_graph, _compute_roc, _geometry_matrix, _init_constellation
+
+# Simulation helpers used only in the MC benchmark path
+from gnss.spoof_sim import (
     _gen_genuine_measurements,
-    _geometry_matrix,
-    _init_constellation,
     _init_receiver,
     _inject_attack,
     _propagate_state,

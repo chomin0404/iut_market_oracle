@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-    from gnss.mvp import _EpochRecord
+    from gnss.mvp import EpochRecord
 
 # ---------------------------------------------------------------------------
 # Colour palette
@@ -83,7 +83,7 @@ def _shannon_entropy(weights: np.ndarray) -> np.ndarray:
 
 
 def _extract_satellite_weights(
-    history: list[_EpochRecord], n_sats: int
+    history: list[EpochRecord], n_sats: int
 ) -> np.ndarray:
     """Return (n_epochs, n_sats) float64 satellite weight array from history."""
     out = np.zeros((len(history), n_sats), dtype=np.float64)
@@ -93,12 +93,12 @@ def _extract_satellite_weights(
     return out
 
 
-def _extract_failsafe_levels(history: list[_EpochRecord]) -> list[str]:
+def _extract_failsafe_levels(history: list[EpochRecord]) -> list[str]:
     """Return per-epoch failsafe level strings from action history."""
     return [rec.action.failsafe.level.value for rec in history]
 
 
-def _extract_alert_levels(history: list[_EpochRecord]) -> list[str]:
+def _extract_alert_levels(history: list[EpochRecord]) -> list[str]:
     """Return per-epoch alert level strings from action history."""
     return [rec.action.alert.level.value for rec in history]
 
@@ -376,7 +376,7 @@ def _panel_confidence(
 
 def plot_gnss_report(
     arrays: EdgeArrays,
-    history: list[_EpochRecord] | None = None,
+    history: list[EpochRecord] | None = None,
     title: str = "GNSS Resilience Diagnostic",
     save_path: str | Path | None = None,
 ) -> Figure:

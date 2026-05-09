@@ -33,16 +33,14 @@ from gnss.action_engine import (
     FailsafeState,
     SatelliteScorer,
 )
+from gnss.constants import _DOPPLER_NOISE_STD, _GRAPH_SIGMA, _INS_VEL_STD
+from gnss.math_utils import _init_constellation
 from gnss.resilience_twin import (
-    _DOPPLER_NOISE_STD,
-    _GRAPH_SIGMA,
-    _INS_VEL_STD,
     EpochDiagnosis,
     ResilienceTwin,
     ResilienceTwinConfig,
     run_resilience_simulation,
 )
-from gnss.spoof_sim import _init_constellation
 from schemas import FaultClass
 
 # ---------------------------------------------------------------------------
@@ -459,8 +457,8 @@ class ActionPlanner:
 
 
 @dataclass
-class _EpochRecord:
-    """Internal history entry."""
+class EpochRecord:
+    """Per-epoch pipeline record (observation + diagnosis + action)."""
 
     obs: ReceiverObservation
     twin_diag: TwinDiagnosis
@@ -506,7 +504,7 @@ class MVPPipeline:
             mc_replay_n=mc_replay_n,
         )
         self._planner = ActionPlanner(min_sats=min_sats)
-        self._history: list[_EpochRecord] = []
+        self._history: list[EpochRecord] = []
 
     def step(self, raw: RawEpochData) -> ControlAction:
         """Process one raw epoch and return a ControlAction.
@@ -516,11 +514,11 @@ class MVPPipeline:
         obs = self._receiver.process(raw)
         twin_diag = self._core.process(obs)
         action = self._planner.plan(twin_diag, obs)
-        self._history.append(_EpochRecord(obs=obs, twin_diag=twin_diag, action=action))
+        self._history.append(EpochRecord(obs=obs, twin_diag=twin_diag, action=action))
         return action
 
     @property
-    def history(self) -> list[_EpochRecord]:
+    def history(self) -> list[EpochRecord]:
         return self._history
 
     def dominant_diagnosis(self) -> FaultClass:

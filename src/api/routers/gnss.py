@@ -35,13 +35,16 @@ from gnss.core import (
     run_simulation,
     verify_tesla_key,
 )
+from gnss.math_utils import _init_constellation
 from gnss.multi_sensor_sim import MultiSensorConfig, run_ms_simulation
+from gnss.persistence import new_run_id
+from gnss.persistence import save_twin_run as _save_twin_run
 from gnss.resilience_twin import (
     ResilienceTwinConfig,
     run_resilience_simulation,
     run_twin_on_observations,
 )
-from gnss.spoof_sim import SimConfig, _init_constellation, run_mc_simulation
+from gnss.spoof_sim import SimConfig, run_mc_simulation
 from schemas import (
     EpochReport,
     MCSimReport,
@@ -620,6 +623,13 @@ class TwinRunRequest(BaseModel):
             "Only relevant when ObservationEpoch.ins_velocity_ms is supplied."
         ),
     )
+    save: bool = Field(
+        default=True,
+        description=(
+            "Persist the run request and report to output/<run_id>/twin_run.json. "
+            "Set False to skip file I/O (e.g. in latency-sensitive contexts)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_dimensions(self) -> TwinRunRequest:
@@ -678,6 +688,8 @@ def twin_run(req: TwinRunRequest) -> TwinRunReport:
     For continuous real-time use, call this endpoint with a rolling window of recent
     epochs (e.g., 30–120 s). The twin reinitialises per request to ensure reproducibility.
     """
+    run_id = new_run_id()
+
     try:
         # ── Build satellite geometry ────────────────────────────────────────
         if req.los_vectors is not None:
@@ -787,7 +799,7 @@ def twin_run(req: TwinRunRequest) -> TwinRunReport:
             key=lambda a: _ACTION_SEVERITY[a],
         )
 
-        return TwinRunReport(
+        report = TwinRunReport(
             epoch_reports=epoch_reports,
             n_epochs=len(epoch_reports),
             n_sats=req.n_sats,
@@ -797,7 +809,18 @@ def twin_run(req: TwinRunRequest) -> TwinRunReport:
             alert_epochs=alert_epochs,
             spoofing_window=spoofing_window,
             worst_action=worst_action,
+            run_id=run_id,
         )
+
+        if req.save:
+            result_path = _save_twin_run(
+                req.model_dump(mode="json"),
+                report.model_dump(mode="json"),
+                run_id,
+            )
+            report = report.model_copy(update={"result_path": result_path})
+
+        return report
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

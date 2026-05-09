@@ -53,7 +53,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from gnss.mvp import _EpochRecord
+from gnss.mvp import EpochRecord
 from schemas import FaultClass
 
 # ---------------------------------------------------------------------------
@@ -217,8 +217,8 @@ class EdgeCollector:
     # Collection
     # ------------------------------------------------------------------
 
-    def collect(self, record: _EpochRecord) -> None:
-        """Append one epoch snapshot from an MVPPipeline _EpochRecord.
+    def collect(self, record: EpochRecord) -> None:
+        """Append one epoch snapshot from an MVPPipeline EpochRecord.
 
         Parameters
         ----------
@@ -261,7 +261,7 @@ class EdgeCollector:
         )
         self._snapshots.append(snap)
 
-    def collect_all(self, history: list[_EpochRecord]) -> None:
+    def collect_all(self, history: list[EpochRecord]) -> None:
         """Collect all records from a pipeline history list.
 
         Equivalent to calling ``collect(r)`` for each ``r`` in ``history``.

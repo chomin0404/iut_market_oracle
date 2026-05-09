@@ -1096,6 +1096,14 @@ class TwinRunReport(BaseModel):
         ..., description="Highest-severity action across all epochs"
     )
     produced_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    run_id: str | None = Field(
+        default=None,
+        description="Unique run identifier (8-char hex). Set when save=True.",
+    )
+    result_path: str | None = Field(
+        default=None,
+        description="Relative path to the saved JSON artifact, e.g. output/<run_id>/twin_run.json",
+    )
 
 
 # ---------------------------------------------------------------------------

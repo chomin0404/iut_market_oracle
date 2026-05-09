@@ -31,32 +31,34 @@ from datetime import datetime, timezone
 import numpy as np
 from scipy.stats import chi2 as _chi2_dist
 
+from gnss.constants import (
+    _DIRICHLET_ALPHA,
+    _DOPPLER_NOISE_STD,
+    _GRAPH_SIGMA,
+    _INS_CLOCK_STD,
+    _INS_VEL_STD,
+    _L1_FREQ,
+    _SPEED_OF_LIGHT,
+)
+from gnss.math_utils import (
+    _build_graph,
+    _compute_roc,
+    _geometry_matrix,
+    _init_constellation,
+)
 from schemas import MCSimReport, RunResult, RunTrace
 
 # ---------------------------------------------------------------------------
-# Physical constants
+# Simulation constants (spoof_sim-specific)
 # ---------------------------------------------------------------------------
 
-_SPEED_OF_LIGHT: float = 2.998e8  # m/s
-_L1_FREQ: float = 1575.42e6  # Hz  (GPS L1 carrier)
-
-# ---------------------------------------------------------------------------
-# Simulation constants
-# ---------------------------------------------------------------------------
-
-_DOPPLER_NOISE_STD: float = 0.30  # Hz  — genuine measurement noise 1-σ
 _SPOOF_BIAS_STD: float = 2.50  # Hz  — common meaconing bias 1-σ
 _SPOOF_DIFF_STD: float = 0.80  # Hz  — per-satellite differential bias 1-σ
-_GRAPH_SIGMA: float = 1.50  # Hz  — Gaussian kernel bandwidth σ
 _VEL_PROCESS_STD: float = 0.05  # m/s per epoch — receiver velocity random walk
 _CLOCK_PROCESS_STD: float = 0.02  # m/s equivalent — clock drift random walk
-_INS_VEL_STD: float = 0.05  # m/s — INS velocity error 1-σ
-_INS_CLOCK_STD: float = 0.01  # m/s equivalent — INS clock error 1-σ
 _PVT_DIM: int = 4  # unknowns: [Δvx, Δvy, Δvz, Δb_dot]
-_ROC_N_THRESHOLDS: int = 200  # resolution for ROC curve
 _FISHER_DOF: int = 6  # χ²(6): 3 statistics × 2 df each (Fisher combination)
 _EPS: float = 1e-300  # p-value floor to prevent log(0)
-_DIRICHLET_ALPHA: float = 2.0  # symmetric Dirichlet concentration parameter
 
 
 # ---------------------------------------------------------------------------
@@ -103,26 +105,6 @@ class SimConfig:
             raise ValueError(f"n_sats must be >= {_PVT_DIM + 1} for WLS to be overdetermined")
         if self.dirichlet_alpha <= 0.0:
             raise ValueError("dirichlet_alpha must be positive")
-
-
-# ---------------------------------------------------------------------------
-# Satellite geometry (Fibonacci lattice on upper hemisphere)
-# ---------------------------------------------------------------------------
-
-
-def _init_constellation(n_sats: int) -> np.ndarray:
-    """Unit LOS vectors from receiver to satellites  shape (n_sats, 3).
-
-    Placed on the upper hemisphere (z > 0) via a Fibonacci spiral so the
-    geometry is deterministic and well-conditioned for any n_sats ≥ 4.
-    """
-    golden = (1.0 + math.sqrt(5.0)) / 2.0
-    idx = np.arange(n_sats, dtype=float)
-    # co-latitude in (0, π/2): ensure strictly positive elevation
-    theta = np.arccos(1.0 - (idx + 0.5) / n_sats)
-    phi = 2.0 * math.pi * idx / golden
-    e = np.column_stack([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
-    return e  # (n_sats, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -239,17 +221,6 @@ def _inject_attack(
 # ---------------------------------------------------------------------------
 # Similarity graph
 # ---------------------------------------------------------------------------
-
-
-def _build_graph(doppler_dev: np.ndarray, sigma: float) -> np.ndarray:
-    """Weight matrix of the satellite similarity graph  shape (n, n).
-
-    w_{ij} = exp(−|Δf_i − Δf_j|² / σ²),  diagonal forced to zero.
-    """
-    diff = doppler_dev[:, None] - doppler_dev[None, :]  # (n, n)
-    W = np.exp(-(diff**2) / (sigma**2))
-    np.fill_diagonal(W, 0.0)
-    return W
 
 
 @dataclass
@@ -393,17 +364,6 @@ def select_subset(W: np.ndarray, k: int) -> list[int]:
 # ---------------------------------------------------------------------------
 
 
-def _geometry_matrix(los: np.ndarray, S: list[int]) -> np.ndarray:
-    """WLS geometry matrix H  shape (|S|, 4).
-
-    Doppler observation equation (row i):
-        Δf_i ≈ −(f_L1/c) · e_i · Δv − (f_L1/c) · Δb_dot
-    Row: [−(f_L1/c) e_ix,  −(f_L1/c) e_iy,  −(f_L1/c) e_iz,  −(f_L1/c)]
-    """
-    scale = _L1_FREQ / _SPEED_OF_LIGHT
-    return np.column_stack([-scale * los[S, :], -np.full(len(S), scale)])
-
-
 def wls_pvt(
     los: np.ndarray,
     doppler_dev: np.ndarray,
@@ -526,43 +486,6 @@ def np_threshold(n_obs: int, pfa: float) -> float:
 # ---------------------------------------------------------------------------
 # ROC computation
 # ---------------------------------------------------------------------------
-
-
-def _compute_roc(
-    scores: np.ndarray,
-    labels: np.ndarray,
-) -> tuple[list[float], list[float], float]:
-    """Compute ROC curve (FPR, TPR) and AUC.
-
-    Args:
-        scores: (N,) detection scores.
-        labels: (N,) binary labels (1 = attack, 0 = genuine).
-
-    Returns:
-        fpr_list, tpr_list (each length _ROC_N_THRESHOLDS), auc.
-    """
-    s_min, s_max = float(scores.min()), float(scores.max())
-    if s_min >= s_max:
-        return [0.0, 1.0], [0.0, 1.0], 0.5
-
-    thresholds = np.linspace(s_min, s_max, _ROC_N_THRESHOLDS)
-    fpr_list: list[float] = []
-    tpr_list: list[float] = []
-
-    for tau in thresholds:
-        pred = scores >= tau
-        tp = int((pred & (labels == 1)).sum())
-        fp = int((pred & (labels == 0)).sum())
-        fn = int((~pred & (labels == 1)).sum())
-        tn = int((~pred & (labels == 0)).sum())
-        tpr_list.append(tp / (tp + fn) if (tp + fn) > 0 else 0.0)
-        fpr_list.append(fp / (fp + tn) if (fp + tn) > 0 else 0.0)
-
-    order = np.argsort(fpr_list)
-    fpr_sorted = np.array(fpr_list)[order]
-    tpr_sorted = np.array(tpr_list)[order]
-    auc = float(np.trapezoid(tpr_sorted, fpr_sorted))
-    return fpr_list, tpr_list, max(0.0, min(1.0, auc))
 
 
 # ---------------------------------------------------------------------------
