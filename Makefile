@@ -27,7 +27,7 @@ test-cov:
 	uv run pytest -q --tb=short --cov=src --cov-report=term-missing --cov-fail-under=80
 
 run:
-	uv run python -m src.main --input examples/sample.jsonl --output output/sample_result.json
+	uv run python -m src.gnss --n-mc 40 --seed 42 --out output/gnss_sample.json
 
 report:
 	uv run python -m src.report
