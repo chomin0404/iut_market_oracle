@@ -179,9 +179,7 @@ class TestRegimeTracker:
         rt = RegimeTracker()
         for mahal in [0.2, 0.8, 2.0]:
             rs = rt.update(mahal)
-            assert pytest.approx(rs.regime_confidence, abs=1e-9) == float(
-                rs.regime_probs.max()
-            )
+            assert pytest.approx(rs.regime_confidence, abs=1e-9) == float(rs.regime_probs.max())
 
     def test_reset_restores_uniform(self) -> None:
         rt = RegimeTracker()
@@ -532,9 +530,7 @@ class TestMCExperiment:
         assert result.config.base_seed == 11
 
     def test_custom_x0_mean(self) -> None:
-        cfg = MCExperimentConfig(
-            n_trials=3, horizon=4, x0_mean=[1.0, 2.0, 3.0]
-        )
+        cfg = MCExperimentConfig(n_trials=3, horizon=4, x0_mean=[1.0, 2.0, 3.0])
         result = run_mc_experiment(cfg)
         # Initial posterior_means entries are x0 samples near [1,2,3]
         x0_samples = result.posterior_means[:, 0, :]

@@ -74,9 +74,7 @@ async def handle_registry_changed(event: dict) -> dict:
     try:
         report = verify_yaml_file(yaml_path)
         result["verification_overall"] = report.overall.value
-        result["failed_checks"] = [
-            c.name for c in report.checks if c.status.value == "fail"
-        ]
+        result["failed_checks"] = [c.name for c in report.checks if c.status.value == "fail"]
     except Exception as exc:  # noqa: BLE001
         result["verification_overall"] = "error"
         result["error"] = str(exc)
@@ -339,10 +337,7 @@ async def dispatch(event_type: str, event: dict) -> dict:
     """
     handler = _HANDLERS.get(event_type)
     if handler is None:
-        raise ValueError(
-            f"Unknown event type: {event_type!r}. "
-            f"Valid types: {list(_HANDLERS)}"
-        )
+        raise ValueError(f"Unknown event type: {event_type!r}. Valid types: {list(_HANDLERS)}")
     return await handler(event)  # type: ignore[operator]
 
 

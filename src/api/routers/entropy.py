@@ -92,8 +92,7 @@ def detect(req: DetectRequest) -> EntropyReport:
                         metric_value=kl_val,
                         threshold=req.kl_threshold,
                         message=(
-                            f"KL {kl_val:.4f} > threshold {req.kl_threshold:.4f}"
-                            f" at step {step}"
+                            f"KL {kl_val:.4f} > threshold {req.kl_threshold:.4f} at step {step}"
                         ),
                     )
                 )

@@ -88,9 +88,7 @@ def compute_viability_conditions(
     """
     m = composite_moat_score(primary_unit.moat_scores)
     adj_wacc = moat_adjusted_wacc(primary_unit.discount_rate, m)
-    adj_g_t = moat_adjusted_terminal_growth(
-        primary_unit.terminal_growth_rate, adj_wacc, m
-    )
+    adj_g_t = moat_adjusted_terminal_growth(primary_unit.terminal_growth_rate, adj_wacc, m)
 
     conditions: list[ViabilityCondition] = []
 

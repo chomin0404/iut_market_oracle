@@ -193,9 +193,7 @@ class TestLoadTwinRun:
 
     def test_load_wrong_schema_version_raises_value_error(self, tmp_path: Path) -> None:
         bad_path = tmp_path / "bad.json"
-        bad_path.write_text(
-            json.dumps({"schema_version": "9.9", "run_id": "x"}), encoding="utf-8"
-        )
+        bad_path.write_text(json.dumps({"schema_version": "9.9", "run_id": "x"}), encoding="utf-8")
         with pytest.raises(ValueError, match="Unsupported schema_version"):
             load_twin_run(bad_path)
 

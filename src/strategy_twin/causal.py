@@ -50,9 +50,7 @@ def _enumerate_paths(
     Depth cap: at most _MAX_PATH_DEPTH edges.
     """
     results: list[list[tuple[str, str, float]]] = []
-    stack: list[tuple[str, list[tuple[str, str, float]], set[str]]] = [
-        (source, [], {source})
-    ]
+    stack: list[tuple[str, list[tuple[str, str, float]], set[str]]] = [(source, [], {source})]
 
     while stack:
         node, path, visited = stack.pop()
@@ -63,9 +61,7 @@ def _enumerate_paths(
             continue
         for neighbour, coef in adj.get(node, []):
             if neighbour not in visited:
-                stack.append(
-                    (neighbour, path + [(node, neighbour, coef)], visited | {neighbour})
-                )
+                stack.append((neighbour, path + [(node, neighbour, coef)], visited | {neighbour}))
 
     return results
 

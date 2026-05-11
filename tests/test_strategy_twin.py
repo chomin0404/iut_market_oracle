@@ -162,9 +162,7 @@ class TestSOTP:
     def test_moat_increases_ev(self) -> None:
         unit_no_moat = _make_unit()
         unit_with_moat = _make_unit(
-            moat_scores=[
-                MoatScore(dimension=MoatDimension.SWITCHING_COSTS, score=1.0, weight=1.0)
-            ]
+            moat_scores=[MoatScore(dimension=MoatDimension.SWITCHING_COSTS, score=1.0, weight=1.0)]
         )
         _, ev_no = sotp_valuation([unit_no_moat])
         _, ev_with = sotp_valuation([unit_with_moat])
@@ -347,9 +345,7 @@ class TestStrategyTwin:
                     growth_rate=0.20,
                     discount_rate=0.12,
                     moat_scores=[
-                        MoatScore(
-                            dimension=MoatDimension.SWITCHING_COSTS, score=0.7, weight=1.0
-                        )
+                        MoatScore(dimension=MoatDimension.SWITCHING_COSTS, score=0.7, weight=1.0)
                     ],
                 ),
                 _make_unit(

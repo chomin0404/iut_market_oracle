@@ -3,6 +3,7 @@
 Usage:
     uv run python run_api.py [--host HOST] [--port PORT] [--no-reload]
 """
+
 from __future__ import annotations
 
 import argparse

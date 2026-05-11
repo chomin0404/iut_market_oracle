@@ -297,9 +297,14 @@ class TestToArrays:
         collector.collect_all(pipeline.history)
         arrays = collector.to_arrays()
         for arr in (
-            arrays.auth_fraction, arrays.confidence, arrays.ins_weight,
-            arrays.mc_auc, arrays.osnma_alert, arrays.entropy_alert,
-            arrays.structure_alert, arrays.phase_alert,
+            arrays.auth_fraction,
+            arrays.confidence,
+            arrays.ins_weight,
+            arrays.mc_auc,
+            arrays.osnma_alert,
+            arrays.entropy_alert,
+            arrays.structure_alert,
+            arrays.phase_alert,
         ):
             assert arr.shape == (n,)
 
@@ -406,9 +411,7 @@ class TestEventMask:
         """Union of all types must be a superset of any individual type."""
         arrays = self._arrays_with_forced_alerts()
         full_mask = arrays.event_mask()
-        entropy_only = arrays.event_mask(
-            entropy=True, structure=False, phase=False, osnma=False
-        )
+        entropy_only = arrays.event_mask(entropy=True, structure=False, phase=False, osnma=False)
         # full_mask is OR of all — any epoch in entropy_only must also be in full_mask
         assert np.all(full_mask | ~entropy_only)
 

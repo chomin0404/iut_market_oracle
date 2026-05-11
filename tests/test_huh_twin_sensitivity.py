@@ -173,6 +173,7 @@ class TestTwoWaySensitivity:
         )
         pairs = {(r.x_value, r.y_value) for r in rows}
         from itertools import product
+
         expected = {(x, y) for x, y in product(self.X_VALUES, self.Y_VALUES)}
         assert pairs == expected
 
@@ -186,8 +187,10 @@ class TestTwoWaySensitivity:
     def test_pct_change_zero_at_base_values(self) -> None:
         rows = two_way_sensitivity(
             BASE,
-            "growth_rate", [BASE.growth_rate],
-            "discount_rate", [BASE.discount_rate],
+            "growth_rate",
+            [BASE.growth_rate],
+            "discount_rate",
+            [BASE.discount_rate],
         )
         assert len(rows) == 1
         assert rows[0].pct_change_vs_base == pytest.approx(0.0, abs=1e-12)
@@ -271,7 +274,12 @@ class TestToRowDictsOneWay:
 
 class TestToRowDictsTwoWay:
     _EXPECTED_KEYS = {
-        "x_name", "x_value", "y_name", "y_value", "enterprise_value", "pct_change_vs_base"
+        "x_name",
+        "x_value",
+        "y_name",
+        "y_value",
+        "enterprise_value",
+        "pct_change_vs_base",
     }
 
     def test_returns_list_of_dicts(self) -> None:

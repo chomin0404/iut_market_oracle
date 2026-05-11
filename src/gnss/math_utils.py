@@ -41,9 +41,7 @@ def _init_constellation(n_sats: int) -> np.ndarray:
     # co-latitude in (0, π/2): ensure strictly positive elevation
     theta = np.arccos(1.0 - (idx + 0.5) / n_sats)
     phi = 2.0 * math.pi * idx / golden
-    e = np.column_stack(
-        [np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]
-    )
+    e = np.column_stack([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
     return e  # (n_sats, 3)
 
 

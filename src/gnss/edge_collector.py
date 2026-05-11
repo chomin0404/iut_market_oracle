@@ -72,34 +72,34 @@ class EdgeSnapshot:
     epoch: int
 
     # --- Observables ---
-    doppler_residuals: np.ndarray           # (n_sats,) [Hz]
-    sqm: np.ndarray | None                  # (n_sats,) ∈ [0,1], None if unavailable
-    ins_velocity: np.ndarray | None         # (3,) [m/s], None if unavailable
-    osnma_auth: tuple[bool, ...] | None     # per-satellite auth flags, None if unavailable
-    pre_excluded: tuple[int, ...]           # indices excluded by ReceiverAgent (C/N0 + SQM)
+    doppler_residuals: np.ndarray  # (n_sats,) [Hz]
+    sqm: np.ndarray | None  # (n_sats,) ∈ [0,1], None if unavailable
+    ins_velocity: np.ndarray | None  # (3,) [m/s], None if unavailable
+    osnma_auth: tuple[bool, ...] | None  # per-satellite auth flags, None if unavailable
+    pre_excluded: tuple[int, ...]  # indices excluded by ReceiverAgent (C/N0 + SQM)
 
     # --- Residuals ---
-    gmm_gamma: tuple[float, ...]            # (n_sats,) per-satellite fault posterior γᵢ
+    gmm_gamma: tuple[float, ...]  # (n_sats,) per-satellite fault posterior γᵢ
     imm_innovation_norms: tuple[float, float, float]  # ‖νₘ‖₂ per IMM mode
-    imm_mode_weights: tuple[float, float, float]      # μ = [μ_nom, μ_mp, μ_spoof]
+    imm_mode_weights: tuple[float, float, float]  # μ = [μ_nom, μ_mp, μ_spoof]
 
     # --- Authentication ---
-    auth_fraction: float                    # fraction of authenticated satellites ∈ [0,1]
-    n_auth: int                             # count of authenticated satellites
-    n_total: int                            # total satellites checked (0 if no OSNMA data)
-    osnma_alert: bool                       # True if auth_fraction < threshold
+    auth_fraction: float  # fraction of authenticated satellites ∈ [0,1]
+    n_auth: int  # count of authenticated satellites
+    n_total: int  # total satellites checked (0 if no OSNMA data)
+    osnma_alert: bool  # True if auth_fraction < threshold
 
     # --- Events ---
     fault_posterior: tuple[float, float, float, float]  # [P_nom, P_mp, P_hw, P_spoof]
     diagnosis: FaultClass
-    confidence: float                       # max(fault_posterior)
+    confidence: float  # max(fault_posterior)
     entropy_alert: bool
     structure_alert: bool
     phase_alert: bool
-    ins_weight: float                       # INS blending weight ∈ [0,1]
-    n_excluded: int                         # satellite count excluded from solution
-    n_active: int                           # satellite count active in solution
-    mc_auc: float | None                    # MC replay AUC; None if not triggered
+    ins_weight: float  # INS blending weight ∈ [0,1]
+    n_excluded: int  # satellite count excluded from solution
+    n_active: int  # satellite count active in solution
+    mc_auc: float | None  # MC replay AUC; None if not triggered
 
 
 # ---------------------------------------------------------------------------
@@ -122,33 +122,33 @@ class EdgeArrays:
     diagnosis is a 1-D object array of FaultClass enum values.
     """
 
-    epochs: np.ndarray              # (n_epochs,) int
+    epochs: np.ndarray  # (n_epochs,) int
 
     # Observables
-    doppler_residuals: np.ndarray   # (n_epochs, n_sats) float64 [Hz]
+    doppler_residuals: np.ndarray  # (n_epochs, n_sats) float64 [Hz]
 
     # Residuals
-    gmm_gamma: np.ndarray           # (n_epochs, n_sats) float64
+    gmm_gamma: np.ndarray  # (n_epochs, n_sats) float64
     imm_innovation_norms: np.ndarray  # (n_epochs, 3) float64
-    imm_mode_weights: np.ndarray    # (n_epochs, 3) float64
+    imm_mode_weights: np.ndarray  # (n_epochs, 3) float64
 
     # Authentication
-    auth_fraction: np.ndarray       # (n_epochs,) float64
-    n_auth: np.ndarray              # (n_epochs,) int64
-    n_total: np.ndarray             # (n_epochs,) int64
-    osnma_alert: np.ndarray         # (n_epochs,) bool
+    auth_fraction: np.ndarray  # (n_epochs,) float64
+    n_auth: np.ndarray  # (n_epochs,) int64
+    n_total: np.ndarray  # (n_epochs,) int64
+    osnma_alert: np.ndarray  # (n_epochs,) bool
 
     # Events
-    fault_posterior: np.ndarray     # (n_epochs, 4) float64
-    diagnosis: np.ndarray           # (n_epochs,) object — FaultClass
-    confidence: np.ndarray          # (n_epochs,) float64
-    entropy_alert: np.ndarray       # (n_epochs,) bool
-    structure_alert: np.ndarray     # (n_epochs,) bool
-    phase_alert: np.ndarray         # (n_epochs,) bool
-    ins_weight: np.ndarray          # (n_epochs,) float64
-    n_excluded: np.ndarray          # (n_epochs,) int64
-    n_active: np.ndarray            # (n_epochs,) int64
-    mc_auc: np.ndarray              # (n_epochs,) float64 — NaN when absent
+    fault_posterior: np.ndarray  # (n_epochs, 4) float64
+    diagnosis: np.ndarray  # (n_epochs,) object — FaultClass
+    confidence: np.ndarray  # (n_epochs,) float64
+    entropy_alert: np.ndarray  # (n_epochs,) bool
+    structure_alert: np.ndarray  # (n_epochs,) bool
+    phase_alert: np.ndarray  # (n_epochs,) bool
+    ins_weight: np.ndarray  # (n_epochs,) float64
+    n_excluded: np.ndarray  # (n_epochs,) int64
+    n_active: np.ndarray  # (n_epochs,) int64
+    mc_auc: np.ndarray  # (n_epochs,) float64 — NaN when absent
 
     @property
     def n_epochs(self) -> int:

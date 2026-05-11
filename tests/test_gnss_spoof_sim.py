@@ -194,7 +194,7 @@ class TestChiStat:
     def test_attack_inflates_statistic(self):
         rng = np.random.default_rng(3)
         d_genuine = rng.normal(0, 0.3, 6)
-        bias = rng.normal(0, 0.8, 6)     # differential bias
+        bias = rng.normal(0, 0.8, 6)  # differential bias
         d_attacked = d_genuine + bias
         assert chi_stat(d_attacked, 0.3) > chi_stat(d_genuine, 0.3)
 
@@ -296,15 +296,16 @@ class TestNpThreshold:
     def test_increases_with_pfa(self):
         t1 = np_threshold(4, pfa=0.10)
         t2 = np_threshold(4, pfa=0.01)
-        assert t2 > t1   # lower pfa → higher threshold
+        assert t2 > t1  # lower pfa → higher threshold
 
     def test_increases_with_dof(self):
         t1 = np_threshold(5, pfa=0.05)
         t2 = np_threshold(8, pfa=0.05)
-        assert t2 > t1   # more dof → higher threshold
+        assert t2 > t1  # more dof → higher threshold
 
     def test_h0_false_alarm_rate(self):
         from scipy.stats import chi2
+
         pfa = 0.05
         n_obs = 6
         tau = np_threshold(n_obs, pfa)
@@ -386,8 +387,13 @@ class TestRunMcSimulationStats:
     def test_auc_above_random(self):
         """AUC should exceed 0.5 (better than random guessing) for strong attack."""
         cfg = SimConfig(
-            n_mc=50, n_epochs=40, n_sats=6, subset_size=4,
-            spoof_bias_std=4.0, spoof_diff_std=1.5, random_seed=42,
+            n_mc=50,
+            n_epochs=40,
+            n_sats=6,
+            subset_size=4,
+            spoof_bias_std=4.0,
+            spoof_diff_std=1.5,
+            random_seed=42,
         )
         report = run_mc_simulation(cfg)
         assert report.auc > 0.51
@@ -395,8 +401,12 @@ class TestRunMcSimulationStats:
     def test_false_alarm_rate_near_target(self):
         """Empirical PFA should be within a tolerance of the NP target."""
         cfg = SimConfig(
-            n_mc=100, n_epochs=40, n_sats=6, subset_size=4,
-            false_alarm_rate=0.05, random_seed=7,
+            n_mc=100,
+            n_epochs=40,
+            n_sats=6,
+            subset_size=4,
+            false_alarm_rate=0.05,
+            random_seed=7,
         )
         report = run_mc_simulation(cfg)
         # Allow ±0.10 tolerance due to finite-sample variability
@@ -413,8 +423,13 @@ class TestRunMcSimulationStats:
         """Larger spoof bias → higher detection probability."""
         base = SimConfig(n_mc=30, n_epochs=40, n_sats=6, subset_size=4, random_seed=1)
         strong = SimConfig(
-            n_mc=30, n_epochs=40, n_sats=6, subset_size=4,
-            spoof_bias_std=5.0, spoof_diff_std=2.0, random_seed=1,
+            n_mc=30,
+            n_epochs=40,
+            n_sats=6,
+            subset_size=4,
+            spoof_bias_std=5.0,
+            spoof_diff_std=2.0,
+            random_seed=1,
         )
         r_base = run_mc_simulation(base)
         r_strong = run_mc_simulation(strong)
@@ -491,6 +506,7 @@ class TestFuseScore:
 class TestSimulateTrial:
     def setup_method(self):
         from scipy.stats import chi2
+
         self.cfg = SimConfig(n_mc=1, n_epochs=20, n_sats=6, subset_size=4)
         self.los = _init_constellation(6)
         self.tau = float(chi2.ppf(1.0 - self.cfg.false_alarm_rate, df=_FISHER_DOF))
@@ -547,10 +563,17 @@ class TestSpooferSimEndpoint:
     def test_response_schema(self):
         body = client.post("/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
         for field in (
-            "roc_fpr", "roc_tpr", "auc",
-            "mean_detection_delay", "std_detection_delay",
-            "mean_pvt_degradation", "std_pvt_degradation",
-            "p_detection", "p_false_alarm", "n_mc", "produced_at",
+            "roc_fpr",
+            "roc_tpr",
+            "auc",
+            "mean_detection_delay",
+            "std_detection_delay",
+            "mean_pvt_degradation",
+            "std_pvt_degradation",
+            "p_detection",
+            "p_false_alarm",
+            "n_mc",
+            "produced_at",
         ):
             assert field in body, f"Missing field: {field}"
 

@@ -464,9 +464,7 @@ class ResilienceSimRequest(BaseModel):
     spoof_diff_std: float = Field(
         default=0.80, ge=0.0, description="Per-satellite differential spoofing noise 1-σ [Hz]"
     )
-    graph_sigma: float = Field(
-        default=1.50, gt=0.0, description="Gaussian kernel bandwidth σ [Hz]"
-    )
+    graph_sigma: float = Field(default=1.50, gt=0.0, description="Gaussian kernel bandwidth σ [Hz]")
     dirichlet_alpha: float = Field(
         default=2.0, gt=0.0, description="Symmetric Dirichlet concentration for attack window"
     )
@@ -612,9 +610,7 @@ class TwinRunRequest(BaseModel):
     doppler_noise_std: float = Field(
         default=0.30, gt=0.0, description="Nominal Doppler noise 1-σ [Hz]"
     )
-    graph_sigma: float = Field(
-        default=1.50, gt=0.0, description="Gaussian kernel bandwidth σ [Hz]"
-    )
+    graph_sigma: float = Field(default=1.50, gt=0.0, description="Gaussian kernel bandwidth σ [Hz]")
     ins_noise_std: float = Field(
         default=0.05,
         gt=0.0,
@@ -657,8 +653,7 @@ class TwinRunRequest(BaseModel):
                 norm = math.sqrt(sum(x * x for x in row))
                 if not (0.5 < norm < 2.0):
                     raise ValueError(
-                        f"los_vectors[{j}] norm={norm:.3f} is far from 1.0 — "
-                        "supply unit vectors"
+                        f"los_vectors[{j}] norm={norm:.3f} is far from 1.0 — supply unit vectors"
                     )
         return self
 
@@ -784,15 +779,11 @@ def twin_run(req: TwinRunRequest) -> TwinRunReport:
         mean_auth = float(
             sum(r.authenticity["genuine"] for r in epoch_reports) / len(epoch_reports)
         )
-        mean_integ = float(
-            sum(r.integrity["nominal"] for r in epoch_reports) / len(epoch_reports)
-        )
+        mean_integ = float(sum(r.integrity["nominal"] for r in epoch_reports) / len(epoch_reports))
         alert_epochs = [r.epoch for r in epoch_reports if r.entropy_alert]
 
         spoof_epochs = [r.epoch for r in epoch_reports if r.fault_posterior["spoofing"] > 0.50]
-        spoofing_window = (
-            [spoof_epochs[0], spoof_epochs[-1]] if spoof_epochs else None
-        )
+        spoofing_window = [spoof_epochs[0], spoof_epochs[-1]] if spoof_epochs else None
 
         worst_action = max(
             (r.recommended_action for r in epoch_reports),

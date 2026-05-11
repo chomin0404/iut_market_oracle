@@ -141,9 +141,7 @@ def load_twin_run(path: str | Path) -> dict[str, Any]:
 
     version = data.get("schema_version")
     if version != SCHEMA_VERSION:
-        raise ValueError(
-            f"Unsupported schema_version '{version}'; expected '{SCHEMA_VERSION}'"
-        )
+        raise ValueError(f"Unsupported schema_version '{version}'; expected '{SCHEMA_VERSION}'")
 
     return data
 

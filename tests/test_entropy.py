@@ -131,9 +131,7 @@ class TestEntropyBeta:
 
     def test_entropy_is_symmetric_in_params(self) -> None:
         # Beta(2,5) and Beta(5,2) have the same entropy (symmetry of Beta).
-        assert math.isclose(
-            entropy_beta(2.0, 5.0), entropy_beta(5.0, 2.0), rel_tol=1e-12
-        )
+        assert math.isclose(entropy_beta(2.0, 5.0), entropy_beta(5.0, 2.0), rel_tol=1e-12)
 
     def test_entropy_beta_is_finite(self) -> None:
         assert math.isfinite(entropy_beta(2.0, 3.0))
@@ -346,9 +344,7 @@ class TestAlertGeneration:
 
     def test_kl_alerts_fired_for_shifted_posteriors(self, tmp_path: Path) -> None:
         cfg = tmp_path / "thresholds.yaml"
-        cfg.write_text(
-            "kl_threshold: 1.0\nentropy_gradient_threshold: 999.0\nrolling_window: 1\n"
-        )
+        cfg.write_text("kl_threshold: 1.0\nentropy_gradient_threshold: 999.0\nrolling_window: 1\n")
         posteriors = self._build_posteriors_with_shift(10)
         prior = _normal_prior(mean=0.0, std=1.0)
         report = run_detection(posteriors, prior, _EXP_ID, config_path=cfg)
@@ -375,16 +371,12 @@ class TestAlertGeneration:
         posteriors = [_normal_posterior(variance=float(i + 1)) for i in range(8)]
         prior = _normal_prior()
         report = run_detection(posteriors, prior, _EXP_ID, config_path=cfg)
-        grad_alerts = [
-            a for a in report.alerts if a.alert_type == AlertType.ENTROPY_GRADIENT
-        ]
+        grad_alerts = [a for a in report.alerts if a.alert_type == AlertType.ENTROPY_GRADIENT]
         assert len(grad_alerts) > 0
 
     def test_alerts_sorted_chronologically(self, tmp_path: Path) -> None:
         cfg = tmp_path / "thresholds.yaml"
-        cfg.write_text(
-            "kl_threshold: 0.0\nentropy_gradient_threshold: 0.0\nrolling_window: 1\n"
-        )
+        cfg.write_text("kl_threshold: 0.0\nentropy_gradient_threshold: 0.0\nrolling_window: 1\n")
         posteriors = [_normal_posterior(mean=float(i), variance=float(i + 1)) for i in range(6)]
         prior = _normal_prior()
         report = run_detection(posteriors, prior, _EXP_ID, config_path=cfg)

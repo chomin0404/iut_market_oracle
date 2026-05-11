@@ -73,11 +73,11 @@ import numpy as np
 _EPS: float = 1e-12
 
 # Default state-space model (d = 3, m = 3 full observation)
-DEFAULT_DT: float = 0.25          # time step [years]
+DEFAULT_DT: float = 0.25  # time step [years]
 DEFAULT_STATE_DIM: int = 3
 DEFAULT_OBS_DIM: int = 3
-DEFAULT_PROC_NOISE_STD: float = 0.05   # σ_w [√(1/year)]
-DEFAULT_OBS_NOISE_STD: float = 0.10    # σ_v (observation noise)
+DEFAULT_PROC_NOISE_STD: float = 0.05  # σ_w [√(1/year)]
+DEFAULT_OBS_NOISE_STD: float = 0.10  # σ_v (observation noise)
 
 # RegimeTracker — 2-regime HMM parameters
 # Transition matrix rows: [P(stay in 0), P(transition)], [P(transition), P(stay in 1)]
@@ -85,13 +85,13 @@ _REGIME_TRANSITION: list[list[float]] = [
     [0.95, 0.05],  # normal   → [stay, stressed]
     [0.10, 0.90],  # stressed → [switch back, stay]
 ]
-_REGIME_LOG_MU: tuple[float, float] = (0.0, 1.0)    # emission log-mean per regime
+_REGIME_LOG_MU: tuple[float, float] = (0.0, 1.0)  # emission log-mean per regime
 _REGIME_LOG_SIGMA: tuple[float, float] = (0.50, 0.80)  # emission log-std per regime
 
 # StructDepMonitor — graph connectivity thresholds
-_STRUCT_FIEDLER_LOW_THRESH: float = 0.10   # λ₂ below this → low-connectivity epoch
-_STRUCT_STREAK_THRESH: int = 3             # consecutive low-connectivity epochs to alert
-_STRUCT_CHANGE_THRESH: float = 0.50        # Frobenius change rate to alert
+_STRUCT_FIEDLER_LOW_THRESH: float = 0.10  # λ₂ below this → low-connectivity epoch
+_STRUCT_STREAK_THRESH: int = 3  # consecutive low-connectivity epochs to alert
+_STRUCT_CHANGE_THRESH: float = 0.50  # Frobenius change rate to alert
 
 # Anomaly score fusion weights: Mahalanobis, Regime-stress, Structural-alert
 _ANOMALY_W_MAHAL: float = 0.40
@@ -115,9 +115,9 @@ class PosteriorState:
     log_lik  : log p(y_t | y_{1:t−1})  (marginal likelihood contribution)
     """
 
-    mean: np.ndarray                    # (d,)
-    cov: np.ndarray                     # (d,d)
-    innovation: np.ndarray              # (m,)
+    mean: np.ndarray  # (d,)
+    cov: np.ndarray  # (d,d)
+    innovation: np.ndarray  # (m,)
     mahal: float
     log_lik: float
 
@@ -132,7 +132,7 @@ class RegimeState:
     transition        : bool  MAP regime changed from previous epoch
     """
 
-    regime_probs: np.ndarray            # (K,)
+    regime_probs: np.ndarray  # (K,)
     regime: int
     regime_confidence: float
     transition: bool
@@ -168,7 +168,7 @@ class TwinCoreDiagnosis:
     posterior: PosteriorState
     regime: RegimeState
     structure: StructuralState
-    anomaly_score: float            # ∈ [0, 1]
+    anomaly_score: float  # ∈ [0, 1]
     alert: bool
 
 
@@ -212,12 +212,12 @@ class MCExperimentResult:
     std_traj         : (horizon+1, d) std of posterior trajectory across trials
     """
 
-    posterior_means: np.ndarray     # (n_trials, horizon+1, d)
-    anomaly_scores: np.ndarray      # (n_trials, horizon)
-    regime_probs: np.ndarray        # (n_trials, horizon, K)
-    final_anomaly: np.ndarray       # (n_trials,)
-    mean_traj: np.ndarray           # (horizon+1, d)
-    std_traj: np.ndarray            # (horizon+1, d)
+    posterior_means: np.ndarray  # (n_trials, horizon+1, d)
+    anomaly_scores: np.ndarray  # (n_trials, horizon)
+    regime_probs: np.ndarray  # (n_trials, horizon, K)
+    final_anomaly: np.ndarray  # (n_trials,)
+    mean_traj: np.ndarray  # (horizon+1, d)
+    std_traj: np.ndarray  # (horizon+1, d)
     config: MCExperimentConfig
 
 
@@ -266,9 +266,7 @@ class BayesianStateFilter:
 
         if obs_matrix is not None:
             if obs_matrix.shape != (m, d):
-                raise ValueError(
-                    f"obs_matrix must be ({m},{d}), got {obs_matrix.shape}"
-                )
+                raise ValueError(f"obs_matrix must be ({m},{d}), got {obs_matrix.shape}")
             self._H = obs_matrix.copy()
         else:
             self._H = np.eye(m, d)  # observe first min(m,d) components
@@ -311,8 +309,8 @@ class BayesianStateFilter:
         P_pred = F @ self._P @ F.T + Q
 
         # --- Innovation and covariance ---
-        nu = y - H @ x_pred                     # (m,) innovation
-        S = H @ P_pred @ H.T + R                # (m,m) innovation covariance
+        nu = y - H @ x_pred  # (m,) innovation
+        S = H @ P_pred @ H.T + R  # (m,m) innovation covariance
 
         # Numerical stabilise S
         S = 0.5 * (S + S.T)
@@ -337,10 +335,10 @@ class BayesianStateFilter:
 
         # --- Update (Joseph form for numerical stability) ---
         try:
-            K_T = np.linalg.solve(S, H @ P_pred)   # (m, d) — avoids explicit S⁻¹
+            K_T = np.linalg.solve(S, H @ P_pred)  # (m, d) — avoids explicit S⁻¹
         except np.linalg.LinAlgError:
             K_T = np.zeros((self._m, self._d))
-        K = K_T.T                                   # (d, m) Kalman gain
+        K = K_T.T  # (d, m) Kalman gain
 
         x_upd = x_pred + K @ nu
         KH = K @ H
@@ -394,9 +392,7 @@ class RegimeTracker:
         emission_params: list[tuple[float, float]] | None = None,
     ) -> None:
         self._K = K
-        Pi = np.array(
-            transition if transition is not None else _REGIME_TRANSITION[:K], dtype=float
-        )
+        Pi = np.array(transition if transition is not None else _REGIME_TRANSITION[:K], dtype=float)
         # Normalise rows to be row-stochastic
         self._Pi: np.ndarray = Pi / Pi.sum(axis=1, keepdims=True)
 
@@ -434,10 +430,10 @@ class RegimeTracker:
         log_emit = -0.5 * ((obs - self._mu) / self._sigma) ** 2 - np.log(self._sigma)
 
         # α-recursion: predict then update
-        alpha_pred = self._Pi.T @ self._alpha        # (K,) predicted regime probs
+        alpha_pred = self._Pi.T @ self._alpha  # (K,) predicted regime probs
         alpha_pred = np.clip(alpha_pred, _EPS, None)
         log_alpha = np.log(alpha_pred) + log_emit
-        log_alpha -= log_alpha.max()                 # subtract max for stability
+        log_alpha -= log_alpha.max()  # subtract max for stability
         alpha_new = np.exp(log_alpha)
         alpha_new /= alpha_new.sum()
 
@@ -547,10 +543,7 @@ class StructDepMonitor:
             change_rate = 0.0
         self._prev_W = W.copy()
 
-        alert = (
-            self._streak >= self._streak_thresh
-            or change_rate > self._change_thresh
-        )
+        alert = self._streak >= self._streak_thresh or change_rate > self._change_thresh
         return StructuralState(
             fiedler_value=fiedler,
             graph_change_rate=change_rate,
@@ -631,13 +624,15 @@ class TwinCore:
 
         # Fusion: composite anomaly score ∈ [0, 1]
         p_stressed = float(regime.regime_probs[1]) if len(regime.regime_probs) > 1 else 0.0
-        score = float(np.clip(
-            _ANOMALY_W_MAHAL * math.tanh(posterior.mahal)
-            + _ANOMALY_W_REGIME * p_stressed
-            + _ANOMALY_W_STRUCT * float(structure.alert),
-            0.0,
-            1.0,
-        ))
+        score = float(
+            np.clip(
+                _ANOMALY_W_MAHAL * math.tanh(posterior.mahal)
+                + _ANOMALY_W_REGIME * p_stressed
+                + _ANOMALY_W_STRUCT * float(structure.alert),
+                0.0,
+                1.0,
+            )
+        )
         alert = bool(regime.transition or structure.alert or posterior.mahal > 3.0)
 
         t = self._t
@@ -707,11 +702,7 @@ def run_mc_experiment(
     Q = config.proc_noise_std**2 * np.eye(d)
     R = config.obs_noise_std**2 * np.eye(m)
 
-    x0_mean = (
-        np.array(config.x0_mean, dtype=float)
-        if config.x0_mean is not None
-        else np.zeros(d)
-    )
+    x0_mean = np.array(config.x0_mean, dtype=float) if config.x0_mean is not None else np.zeros(d)
 
     # Pre-allocate output arrays
     post_means = np.zeros((n_trials, horizon + 1, d))
@@ -750,8 +741,8 @@ def run_mc_experiment(
             anomaly_arr[k, t] = diag.anomaly_score
             regime_arr[k, t, :] = diag.regime.regime_probs
 
-    mean_traj = post_means.mean(axis=0)   # (horizon+1, d)
-    std_traj = post_means.std(axis=0)     # (horizon+1, d)
+    mean_traj = post_means.mean(axis=0)  # (horizon+1, d)
+    std_traj = post_means.std(axis=0)  # (horizon+1, d)
     final_anomaly = anomaly_arr[:, -1] if horizon > 0 else np.zeros(n_trials)
 
     return MCExperimentResult(

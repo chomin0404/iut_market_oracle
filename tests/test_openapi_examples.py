@@ -45,10 +45,7 @@ def _op_examples(openapi: dict, path: str, method: str = "post") -> dict:
     """Return the ``examples`` dict from a request-body operation."""
     op = openapi["paths"][path][method]
     return (
-        op.get("requestBody", {})
-        .get("content", {})
-        .get("application/json", {})
-        .get("examples", {})
+        op.get("requestBody", {}).get("content", {}).get("application/json", {}).get("examples", {})
     )
 
 
@@ -172,8 +169,15 @@ class TestComponentExamples:
 
     def test_model_spec_required_fields_present(self, openapi: dict) -> None:
         ex = _component_example(openapi, "ModelSpec")
-        for field in ("objective", "state_variables", "observables", "parameters",
-                      "equations", "solver", "outputs"):
+        for field in (
+            "objective",
+            "state_variables",
+            "observables",
+            "parameters",
+            "equations",
+            "solver",
+            "outputs",
+        ):
             assert field in ex
 
     # ParsedIdeaResponse ------------------------------------------------------

@@ -1004,12 +1004,8 @@ class EpochReport(BaseModel):
     """
 
     epoch: int
-    authenticity: dict[str, float] = Field(
-        ..., description='{"genuine": float, "spoofed": float}'
-    )
-    integrity: dict[str, float] = Field(
-        ..., description='{"nominal": float, "degraded": float}'
-    )
+    authenticity: dict[str, float] = Field(..., description='{"genuine": float, "spoofed": float}')
+    integrity: dict[str, float] = Field(..., description='{"nominal": float, "degraded": float}')
     fault_posterior: dict[str, float] = Field(
         ..., description="FaultClass.value → posterior probability ∈ [0, 1]"
     )
@@ -1402,10 +1398,10 @@ class VerificationReport(BaseModel):
 class TraceNodeType(str, Enum):
     """Artifact type in the ModelForge traceability graph."""
 
-    REGISTRY = "registry"          # configs/model_registry/<id>.yaml
+    REGISTRY = "registry"  # configs/model_registry/<id>.yaml
     VERIFICATION = "verification"  # artifacts/modelforge/<id>/verification.json
     GENERATED_CODE = "generated_code"  # artifacts/modelforge/<id>/impl_skeleton.py
-    AUDIT_ENTRY = "audit_entry"    # .claude/audit/modelforge.jsonl line
+    AUDIT_ENTRY = "audit_entry"  # .claude/audit/modelforge.jsonl line
 
 
 class TraceNode(BaseModel):

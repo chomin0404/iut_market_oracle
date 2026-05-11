@@ -44,6 +44,7 @@ from api.routers import (
     strategy,
     twin,
     valuation,
+    yield_twin,
 )
 from modeling_api.examples import (
     EXAMPLE_MODEL_RECOMMENDATION,
@@ -126,6 +127,13 @@ _TAGS_METADATA = [
             "Every model must pass verification before code is written."
         ),
     },
+    {
+        "name": "yield-twin",
+        "description": (
+            "Process Yield Twin (T1600): GP surrogate (ARD RBF) + D-Optimal DOE "
+            "+ Expected Improvement fusion — sequential experiment recommendation."
+        ),
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -195,6 +203,7 @@ app.include_router(model.router, prefix="/model", tags=["model"])
 app.include_router(ideas.router, prefix="/ideas", tags=["ideas"])
 app.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
 app.include_router(forge.router, prefix="/forge", tags=["forge"])
+app.include_router(yield_twin.router, prefix="/yield-twin", tags=["yield-twin"])
 
 # ---------------------------------------------------------------------------
 # System endpoints
@@ -255,9 +264,7 @@ class _ErrorResponse(BaseModel):
 
 
 @app.exception_handler(StarletteHTTPException)
-async def _http_exception_handler(
-    request: Request, exc: StarletteHTTPException
-) -> JSONResponse:
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content=_ErrorResponse(

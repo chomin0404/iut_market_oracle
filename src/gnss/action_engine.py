@@ -46,32 +46,30 @@ import numpy as np
 _SCORE_W_GMM: float = 0.60
 _SCORE_W_SQM: float = 0.25
 _SCORE_W_OSNMA: float = 0.15
-_SCORE_SQM_THRESH: float = 0.70       # SQM > this contributes the full w_sqm term
+_SCORE_SQM_THRESH: float = 0.70  # SQM > this contributes the full w_sqm term
 
 # Soft-exclusion tier boundaries
-HARD_EXCLUDE_THRESH: float = 0.75     # s_i ≥ this → hard exclude
-DOWNWEIGHT_THRESH: float = 0.40       # 0.40 ≤ s_i < 0.75 → downweight
+HARD_EXCLUDE_THRESH: float = 0.75  # s_i ≥ this → hard exclude
+DOWNWEIGHT_THRESH: float = 0.40  # 0.40 ≤ s_i < 0.75 → downweight
 
 # Failsafe transition thresholds
-_SPOOFING_DEGRADED_THRESH: float = 0.50    # spoof_prob > this → DEGRADED
-_SPOOFING_INS_ONLY_THRESH: float = 0.80   # spoof_prob > this → INS_ONLY / CRITICAL
-_FAILSAFE_RECOVERY_EPOCHS: int = 3         # consecutive eligible epochs to ascend
+_SPOOFING_DEGRADED_THRESH: float = 0.50  # spoof_prob > this → DEGRADED
+_SPOOFING_INS_ONLY_THRESH: float = 0.80  # spoof_prob > this → INS_ONLY / CRITICAL
+_FAILSAFE_RECOVERY_EPOCHS: int = 3  # consecutive eligible epochs to ascend
 
 # INS weight clamping per failsafe level: (floor, ceil)
 _FAILSAFE_INS_BOUNDS: dict[str, tuple[float, float]] = {
-    "nominal":        (0.0,  1.0),
-    "degraded":       (0.45, 0.70),
-    "ins_only":       (0.90, 0.90),
-    "dead_reckoning": (1.0,  1.0),
+    "nominal": (0.0, 1.0),
+    "degraded": (0.45, 0.70),
+    "ins_only": (0.90, 0.90),
+    "dead_reckoning": (1.0, 1.0),
 }
 
 # Alert level thresholds
-_ALERT_SOURCES_WARNING: int = 2       # ≥ 2 sources → WARNING
+_ALERT_SOURCES_WARNING: int = 2  # ≥ 2 sources → WARNING
 
 # Severity order (higher index = worse)
-_LEVEL_ORDER: tuple[str, ...] = (
-    "nominal", "degraded", "ins_only", "dead_reckoning"
-)
+_LEVEL_ORDER: tuple[str, ...] = ("nominal", "degraded", "ins_only", "dead_reckoning")
 
 
 # ---------------------------------------------------------------------------
@@ -82,18 +80,18 @@ _LEVEL_ORDER: tuple[str, ...] = (
 class FailsafeLevel(str, Enum):
     """Operational safety state of the GNSS position solution."""
 
-    NOMINAL        = "nominal"
-    DEGRADED       = "degraded"
-    INS_ONLY       = "ins_only"
+    NOMINAL = "nominal"
+    DEGRADED = "degraded"
+    INS_ONLY = "ins_only"
     DEAD_RECKONING = "dead_reckoning"
 
 
 class AlertLevel(str, Enum):
     """Severity level for structured alert events."""
 
-    INFO     = "info"
-    CAUTION  = "caution"
-    WARNING  = "warning"
+    INFO = "info"
+    CAUTION = "caution"
+    WARNING = "warning"
     CRITICAL = "critical"
 
 
@@ -345,9 +343,9 @@ class AlertBuilder:
         if structure_alert:
             sources.append("structure")
 
-        if (
-            spoofing_prob > _SPOOFING_INS_ONLY_THRESH
-            or failsafe.level in (FailsafeLevel.INS_ONLY, FailsafeLevel.DEAD_RECKONING)
+        if spoofing_prob > _SPOOFING_INS_ONLY_THRESH or failsafe.level in (
+            FailsafeLevel.INS_ONLY,
+            FailsafeLevel.DEAD_RECKONING,
         ):
             level = AlertLevel.CRITICAL
         elif spoofing_prob > _SPOOFING_DEGRADED_THRESH or len(sources) >= _ALERT_SOURCES_WARNING:

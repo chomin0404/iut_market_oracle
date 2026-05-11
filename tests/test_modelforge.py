@@ -706,9 +706,7 @@ class TestDispatch:
 
         monkeypatch.setattr(ModelForge, "__init__", patched_init)
 
-        result = asyncio.run(
-            automation.handle_registry_changed({"model_id": "test_model"})
-        )
+        result = asyncio.run(automation.handle_registry_changed({"model_id": "test_model"}))
         assert result["model_id"] == "test_model"
         assert "verification_overall" in result
         assert result.get("forge_status") == "ok"
@@ -718,9 +716,7 @@ class TestDispatch:
 
         reg_dir = self._make_registry(tmp_path)
         monkeypatch.setattr(automation, "_REGISTRY_DIR", reg_dir)
-        result = asyncio.run(
-            automation.dispatch("verify_requested", {"model_id": "test_model"})
-        )
+        result = asyncio.run(automation.dispatch("verify_requested", {"model_id": "test_model"}))
         assert "overall" in result
 
 

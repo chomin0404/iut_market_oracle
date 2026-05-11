@@ -131,6 +131,7 @@ class TestOneWayResults:
         base = result.base_inputs
         for row in result.one_way["growth_rate"]:
             from huh_twin.sensitivity import _replace_inputs
+
             expected = dcf_valuation(_replace_inputs(base, growth_rate=row.value)).enterprise_value
             assert row.enterprise_value == pytest.approx(expected, rel=1e-12)
 
@@ -182,7 +183,8 @@ class TestTwoWayResults:
         result = load_valuation_config(_write(tmp_path, _MINIMAL_YAML))
         assert result.two_way is not None
         base_point = next(
-            p for p in result.two_way
+            p
+            for p in result.two_way
             if p.x_value == pytest.approx(0.10) and p.y_value == pytest.approx(0.10)
         )
         assert base_point.pct_change_vs_base == pytest.approx(0.0, abs=1e-12)

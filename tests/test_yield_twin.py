@@ -188,8 +188,8 @@ class TestQuadraticBasis:
         # p = 1 + 1 + 1*(1+1)//2 = 1 + 1 + 1 = 3
         phi = _quadratic_basis(np.array([0.5]))
         assert len(phi) == 3
-        assert phi[0] == 1.0       # intercept
-        assert phi[1] == 0.5       # x1
+        assert phi[0] == 1.0  # intercept
+        assert phi[1] == 0.5  # x1
         assert phi[2] == pytest.approx(0.25)  # x1²
 
     def test_dimension_d2(self) -> None:
@@ -199,9 +199,9 @@ class TestQuadraticBasis:
         assert phi[0] == 1.0
         assert phi[1] == pytest.approx(0.3)
         assert phi[2] == pytest.approx(0.7)
-        assert phi[3] == pytest.approx(0.09)   # x1²
-        assert phi[4] == pytest.approx(0.21)   # x1*x2
-        assert phi[5] == pytest.approx(0.49)   # x2²
+        assert phi[3] == pytest.approx(0.09)  # x1²
+        assert phi[4] == pytest.approx(0.21)  # x1*x2
+        assert phi[5] == pytest.approx(0.49)  # x2²
 
     def test_dimension_d3(self) -> None:
         # p = 1 + 3 + 3*(3+1)//2 = 1 + 3 + 6 = 10
@@ -324,9 +324,7 @@ class TestProcessYieldTwin:
         assert twin.report().n_observations == 1
 
     def test_three_factor_recommendation(self, three_factor_specs) -> None:
-        config = YieldTwinConfig(
-            factor_specs=three_factor_specs, n_candidates=100, random_seed=7
-        )
+        config = YieldTwinConfig(factor_specs=three_factor_specs, n_candidates=100, random_seed=7)
         twin = ProcessYieldTwin(config)
         rng = np.random.default_rng(7)
         for _ in range(5):
@@ -349,9 +347,7 @@ class TestProcessYieldTwin:
 
 
 class TestRecommendNextExperiment:
-    def test_returns_yield_twin_report(
-        self, two_factor_specs, simple_observations
-    ) -> None:
+    def test_returns_yield_twin_report(self, two_factor_specs, simple_observations) -> None:
         report = recommend_next_experiment(
             two_factor_specs,
             simple_observations,

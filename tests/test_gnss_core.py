@@ -264,8 +264,12 @@ class TestRunSimulation:
     def test_by_attack_type_keys(self) -> None:
         report = run_simulation(num_epochs=20, attack_prob=0.4, seed=1)
         expected_keys = {
-            "naive_replay", "modified_replay", "key_disclosure",
-            "late_injection", "key_compromise", "none",
+            "naive_replay",
+            "modified_replay",
+            "key_disclosure",
+            "late_injection",
+            "key_compromise",
+            "none",
         }
         assert set(report.by_attack_type.keys()).issubset(expected_keys)
 

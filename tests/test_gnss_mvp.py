@@ -233,9 +233,7 @@ class TestActionPlanner:
         )
         return core.process(obs)
 
-    def _make_obs(
-        self, pre_excluded: tuple[int, ...] = (), n: int = 6
-    ) -> ReceiverObservation:
+    def _make_obs(self, pre_excluded: tuple[int, ...] = (), n: int = 6) -> ReceiverObservation:
         return ReceiverObservation(
             epoch=0,
             doppler_residuals=_nominal_doppler(n),

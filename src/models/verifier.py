@@ -185,9 +185,7 @@ def verify_yaml_file(yaml_path: Path) -> VerificationReport:
     try:
         data = yaml.safe_load(raw_bytes)
         entry = ModelRegistryEntry(**data)
-        checks.append(
-            VerificationCheck(name="schema_valid", status=VerificationStatus.PASS)
-        )
+        checks.append(VerificationCheck(name="schema_valid", status=VerificationStatus.PASS))
     except Exception as exc:  # noqa: BLE001
         checks.append(
             VerificationCheck(
@@ -205,14 +203,16 @@ def verify_yaml_file(yaml_path: Path) -> VerificationReport:
         )
 
     # Checks 2–7: content checks
-    checks.extend([
-        _check_equations_present(entry),
-        _check_solver_specified(entry),
-        _check_outputs_present(entry),
-        _check_parameters_documented(entry),
-        _check_references_present(entry),
-        _check_parameter_in_equations(entry),
-    ])
+    checks.extend(
+        [
+            _check_equations_present(entry),
+            _check_solver_specified(entry),
+            _check_outputs_present(entry),
+            _check_parameters_documented(entry),
+            _check_references_present(entry),
+            _check_parameter_in_equations(entry),
+        ]
+    )
 
     overall = _worst([c.status for c in checks])
     return VerificationReport(

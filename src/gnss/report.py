@@ -55,7 +55,7 @@ _ALERT_COLORS = {
 
 # Background band colours for failsafe level (alpha=0.15 applied at draw time)
 _FAILSAFE_BAND_COLORS = {
-    "nominal": None,                  # no shading
+    "nominal": None,  # no shading
     "degraded": "#ffcc00",
     "ins_only": "#ff4444",
     "dead_reckoning": "#888888",
@@ -82,9 +82,7 @@ def _shannon_entropy(weights: np.ndarray) -> np.ndarray:
     return -np.sum(weights * np.log(safe), axis=-1)
 
 
-def _extract_satellite_weights(
-    history: list[EpochRecord], n_sats: int
-) -> np.ndarray:
+def _extract_satellite_weights(history: list[EpochRecord], n_sats: int) -> np.ndarray:
     """Return (n_epochs, n_sats) float64 satellite weight array from history."""
     out = np.zeros((len(history), n_sats), dtype=np.float64)
     for i, rec in enumerate(history):
@@ -319,8 +317,13 @@ def _panel_subset(
         ep, arrays.n_active, where="post", color="#2ca02c", linewidth=1.5, label="n_active"
     )
     ax_count.step(
-        ep, arrays.n_excluded, where="post",
-        color="#d62728", linewidth=1.5, linestyle="--", label="n_excluded",
+        ep,
+        arrays.n_excluded,
+        where="post",
+        color="#d62728",
+        linewidth=1.5,
+        linestyle="--",
+        label="n_excluded",
     )
     ax_count.set_ylabel("Satellite count", fontsize=9)
     ax_count.set_ylim(0, n_sats + 1)
@@ -363,9 +366,7 @@ def _panel_confidence(
     ax.set_ylabel("Weight / Confidence", fontsize=9)
     ax.set_ylim(-0.02, 1.08)
     ax.legend(loc="upper right", fontsize=7)
-    ax.set_title(
-        "推定信頼度 — Confidence, INS Weight & Failsafe", fontsize=10, fontweight="bold"
-    )
+    ax.set_title("推定信頼度 — Confidence, INS Weight & Failsafe", fontsize=10, fontweight="bold")
     ax.grid(axis="y", linewidth=0.4, alpha=0.5)
 
 
@@ -417,11 +418,15 @@ def plot_gnss_report(
     # 5 rows: panels 1-3 full-width, panel 4 split 3:2, panel 5 full-width
     fig = plt.figure(figsize=(14, 20))
     gs = gridspec.GridSpec(
-        5, 5,
+        5,
+        5,
         figure=fig,
         hspace=0.55,
         wspace=0.40,
-        left=0.07, right=0.97, top=0.94, bottom=0.04,
+        left=0.07,
+        right=0.97,
+        top=0.94,
+        bottom=0.04,
     )
 
     ax1 = fig.add_subplot(gs[0, :])

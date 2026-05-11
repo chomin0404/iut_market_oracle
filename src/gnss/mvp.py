@@ -47,10 +47,10 @@ from schemas import FaultClass
 # Module constants
 # ---------------------------------------------------------------------------
 
-_CN0_MIN_DBHz: float = 20.0       # minimum acceptable C/N0 [dB-Hz]
-_CN0_MAX_DBHz: float = 60.0       # maximum plausible C/N0 [dB-Hz]
-_SQM_EXCLUDE_THRESH: float = 0.70 # SQM threshold — exclude satellite if SQM > this
-_MIN_SATS_REQUIRED: int = 4        # hard floor for satellite count
+_CN0_MIN_DBHz: float = 20.0  # minimum acceptable C/N0 [dB-Hz]
+_CN0_MAX_DBHz: float = 60.0  # maximum plausible C/N0 [dB-Hz]
+_SQM_EXCLUDE_THRESH: float = 0.70  # SQM threshold — exclude satellite if SQM > this
+_MIN_SATS_REQUIRED: int = 4  # hard floor for satellite count
 
 # INS trust weights per fault class (index = FaultClass enum value order)
 # NOMINAL  MULTIPATH  HARDWARE_FAULT  SPOOFING
@@ -61,12 +61,12 @@ _INS_WEIGHT_BY_CLASS: dict[FaultClass, float] = {
     FaultClass.SPOOFING: 0.90,
 }
 
-_CONFIDENCE_MC_THRESH: float = 0.60   # trigger MC replay when confidence < this
-_MC_REPLAY_N: int = 16                 # MC runs for confidence-triggered replay
+_CONFIDENCE_MC_THRESH: float = 0.60  # trigger MC replay when confidence < this
+_MC_REPLAY_N: int = 16  # MC runs for confidence-triggered replay
 
 # ActionPlanner — INS EMA parameters
-_EMA_ALPHA: float = 0.30              # smoothing factor (≈ 3-epoch 95% window)
-_CONFIDENCE_GATE_THRESH: float = 0.70 # below this, bypass EMA toward raw value
+_EMA_ALPHA: float = 0.30  # smoothing factor (≈ 3-epoch 95% window)
+_CONFIDENCE_GATE_THRESH: float = 0.70  # below this, bypass EMA toward raw value
 
 # ---------------------------------------------------------------------------
 # Shared data classes
@@ -82,12 +82,12 @@ class RawEpochData:
     """
 
     epoch: int
-    doppler_residuals: np.ndarray          # (n_sats,) [Hz]
-    cn0_dbhz: np.ndarray | None = None     # (n_sats,) C/N0 [dB-Hz]
+    doppler_residuals: np.ndarray  # (n_sats,) [Hz]
+    cn0_dbhz: np.ndarray | None = None  # (n_sats,) C/N0 [dB-Hz]
     pseudorange_residuals: np.ndarray | None = None  # (n_sats,) [m]
-    sqm: np.ndarray | None = None          # (n_sats,) signal quality metric ∈ [0,1]
-    imu_velocity: np.ndarray | None = None # (3,) IMU velocity deviation [m/s]
-    osnma_auth: list[bool] | None = None   # per-satellite OSNMA flags
+    sqm: np.ndarray | None = None  # (n_sats,) signal quality metric ∈ [0,1]
+    imu_velocity: np.ndarray | None = None  # (3,) IMU velocity deviation [m/s]
+    osnma_auth: list[bool] | None = None  # per-satellite OSNMA flags
 
 
 @dataclass(frozen=True)
@@ -99,12 +99,12 @@ class ReceiverObservation:
     """
 
     epoch: int
-    doppler_residuals: np.ndarray          # (n_sats,) validated [Hz]
-    ins_velocity: np.ndarray | None        # (3,) from IMU, or None
-    osnma_auth: list[bool] | None          # forwarded as-is
-    sqm: np.ndarray | None                 # (n_sats,), may be None
-    pre_excluded: tuple[int, ...]          # satellites failed at RX stage
-    n_sats: int                            # total satellite count
+    doppler_residuals: np.ndarray  # (n_sats,) validated [Hz]
+    ins_velocity: np.ndarray | None  # (3,) from IMU, or None
+    osnma_auth: list[bool] | None  # forwarded as-is
+    sqm: np.ndarray | None  # (n_sats,), may be None
+    pre_excluded: tuple[int, ...]  # satellites failed at RX stage
+    n_sats: int  # total satellite count
 
 
 @dataclass(frozen=True)
@@ -112,8 +112,8 @@ class TwinDiagnosis:
     """Output of TwinCore per epoch."""
 
     epoch: int
-    epoch_diag: EpochDiagnosis             # full ResilienceTwin output
-    mc_auc: float | None                   # AUC from MC replay (None if not triggered)
+    epoch_diag: EpochDiagnosis  # full ResilienceTwin output
+    mc_auc: float | None  # AUC from MC replay (None if not triggered)
 
 
 @dataclass(frozen=True)
@@ -130,15 +130,15 @@ class ControlAction:
     """
 
     epoch: int
-    excluded_satellites: tuple[int, ...]   # hard-excluded satellite indices
-    n_active: int                          # satellites remaining after hard exclusion
-    ins_weight: float                      # EMA-smoothed INS blending weight ∈ [0, 1]
-    diagnosis: FaultClass                  # dominant fault class
-    confidence: float                      # max(fault_posterior)
-    reason: str                            # plain-language justification
-    satellite_weights: tuple[float, ...]   # (n_sats,) per-satellite weights ∈ [0, 1]
-    failsafe: FailsafeState                # failsafe state machine snapshot
-    alert: AlertEvent                      # structured severity-levelled alert
+    excluded_satellites: tuple[int, ...]  # hard-excluded satellite indices
+    n_active: int  # satellites remaining after hard exclusion
+    ins_weight: float  # EMA-smoothed INS blending weight ∈ [0, 1]
+    diagnosis: FaultClass  # dominant fault class
+    confidence: float  # max(fault_posterior)
+    reason: str  # plain-language justification
+    satellite_weights: tuple[float, ...]  # (n_sats,) per-satellite weights ∈ [0, 1]
+    failsafe: FailsafeState  # failsafe state machine snapshot
+    alert: AlertEvent  # structured severity-levelled alert
 
 
 # ---------------------------------------------------------------------------
@@ -174,9 +174,7 @@ class ReceiverAgent:
         """
         n = len(raw.doppler_residuals)
         if n != self._n_sats:
-            raise ValueError(
-                f"ReceiverAgent: expected {self._n_sats} Doppler values, got {n}"
-            )
+            raise ValueError(f"ReceiverAgent: expected {self._n_sats} Doppler values, got {n}")
 
         pre_excluded: list[int] = []
 
@@ -323,7 +321,7 @@ class ActionPlanner:
         obs: ReceiverObservation,
     ) -> ControlAction:
         diag = twin_diag.epoch_diag
-        fp = diag.fault_posterior       # (P_nom, P_mp, P_hw, P_spoof)
+        fp = diag.fault_posterior  # (P_nom, P_mp, P_hw, P_spoof)
 
         n = obs.n_sats
         all_indices = set(range(n))
@@ -493,9 +491,7 @@ class MVPPipeline:
     ) -> None:
         if los is None:
             los = _init_constellation(n_sats)
-        self._receiver = ReceiverAgent(
-            n_sats=n_sats, sqm_thresh=sqm_thresh
-        )
+        self._receiver = ReceiverAgent(n_sats=n_sats, sqm_thresh=sqm_thresh)
         self._core = TwinCore(
             los=los,
             noise_std=noise_std,

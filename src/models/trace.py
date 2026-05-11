@@ -159,11 +159,7 @@ class TraceGraph:
     def to_dict(self) -> dict:
         """Export full graph as a dict with nodes and edges lists."""
         nodes = self.load_all()
-        edges = [
-            {"from": pid, "to": n.node_id}
-            for n in nodes
-            for pid in n.parent_ids
-        ]
+        edges = [{"from": pid, "to": n.node_id} for n in nodes for pid in n.parent_ids]
         return {
             "nodes": [json.loads(n.model_dump_json()) for n in nodes],
             "edges": edges,

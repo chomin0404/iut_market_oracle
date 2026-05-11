@@ -325,9 +325,7 @@ class TestReverseDCFImpliedGrowth:
 
     def _roundtrip(self, growth_rate: float) -> float:
         """Compute EV at growth_rate, then recover implied growth."""
-        ev = dcf_valuation(
-            DCFInputs(growth_rate=growth_rate, **self._BASE)
-        ).enterprise_value
+        ev = dcf_valuation(DCFInputs(growth_rate=growth_rate, **self._BASE)).enterprise_value
         return reverse_dcf_implied_growth(target_enterprise_value=ev, **self._BASE)
 
     def test_round_trip_low_growth(self) -> None:
@@ -377,9 +375,7 @@ class TestReverseDCFImpliedGrowth:
 
     def test_unbracketable_target_raises(self) -> None:
         # EV is monotone in growth_rate; a target below EV(low) is unbracketable
-        ev_at_low = dcf_valuation(
-            DCFInputs(growth_rate=-0.50, **self._BASE)
-        ).enterprise_value
+        ev_at_low = dcf_valuation(DCFInputs(growth_rate=-0.50, **self._BASE)).enterprise_value
         with pytest.raises(ValueError, match="bracket"):
             reverse_dcf_implied_growth(
                 target_enterprise_value=ev_at_low * 0.1,

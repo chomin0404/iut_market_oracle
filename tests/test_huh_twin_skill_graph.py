@@ -195,12 +195,14 @@ class TestPromptItemsMissingFromClassification:
 
     def test_detects_missing_item(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import huh_twin.skill_graph as sg
+
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", ["ghost_skill"])
         result = sg.prompt_items_missing_from_classification()
         assert "ghost_skill" in result
 
     def test_does_not_report_items_present_in_both(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import huh_twin.skill_graph as sg
+
         present_name = SKILL_CLASSIFICATION[0].name
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", [present_name])
         assert sg.prompt_items_missing_from_classification() == []
@@ -217,12 +219,14 @@ class TestClassificationItemsNotInPrompt:
 
     def test_detects_orphaned_classification_item(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import huh_twin.skill_graph as sg
+
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", [])
         result = sg.classification_items_not_in_prompt()
         assert len(result) == len(SKILL_CLASSIFICATION)
 
     def test_does_not_report_matched_items(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import huh_twin.skill_graph as sg
+
         all_names = [item.name for item in SKILL_CLASSIFICATION]
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", all_names)
         assert sg.classification_items_not_in_prompt() == []
@@ -239,6 +243,7 @@ class TestDuplicatePromptItems:
 
     def test_detects_single_duplicate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import huh_twin.skill_graph as sg
+
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", ["a", "b", "a"])
         assert sg.duplicate_prompt_items() == ["a"]
 
@@ -246,21 +251,25 @@ class TestDuplicatePromptItems:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import huh_twin.skill_graph as sg
+
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", ["x", "x", "x"])
         assert sg.duplicate_prompt_items() == ["x"]
 
     def test_detects_multiple_duplicates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import huh_twin.skill_graph as sg
+
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", ["a", "b", "a", "b", "c"])
         result = sg.duplicate_prompt_items()
         assert set(result) == {"a", "b"}
 
     def test_unique_item_not_reported_as_duplicate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import huh_twin.skill_graph as sg
+
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", ["unique", "dup", "dup"])
         assert "unique" not in sg.duplicate_prompt_items()
 
     def test_empty_list_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import huh_twin.skill_graph as sg
+
         monkeypatch.setattr(sg, "EXPECTED_PROMPT_ITEMS", [])
         assert sg.duplicate_prompt_items() == []

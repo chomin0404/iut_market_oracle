@@ -47,51 +47,35 @@ class TestRegimeSwitchingDeterminism:
 
 class TestRegimeSwitchingInvariants:
     def test_prices_length_equals_n_steps(self):
-        result = simulate_regime_switching(
-            _N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng()
-        )
+        result = simulate_regime_switching(_N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng())
         assert len(result.prices) == _N_STEPS
 
     def test_regimes_length_equals_n_steps(self):
-        result = simulate_regime_switching(
-            _N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng()
-        )
+        result = simulate_regime_switching(_N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng())
         assert len(result.regimes) == _N_STEPS
 
     def test_initial_price_preserved(self):
-        result = simulate_regime_switching(
-            _N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng()
-        )
+        result = simulate_regime_switching(_N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng())
         assert result.prices[0] == pytest.approx(_INIT_PRICE)
 
     def test_initial_regime_is_zero(self):
-        result = simulate_regime_switching(
-            _N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng()
-        )
+        result = simulate_regime_switching(_N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng())
         assert result.regimes[0] == 0
 
     def test_regimes_are_binary(self):
-        result = simulate_regime_switching(
-            _N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng()
-        )
+        result = simulate_regime_switching(_N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng())
         assert all(r in (0, 1) for r in result.regimes)
 
     def test_prices_all_positive(self):
-        result = simulate_regime_switching(
-            _N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng()
-        )
+        result = simulate_regime_switching(_N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng())
         assert all(p > 0 for p in result.prices)
 
     def test_n_steps_stored(self):
-        result = simulate_regime_switching(
-            _N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng()
-        )
+        result = simulate_regime_switching(_N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng())
         assert result.n_steps == _N_STEPS
 
     def test_transition_probs_stored(self):
-        result = simulate_regime_switching(
-            _N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng()
-        )
+        result = simulate_regime_switching(_N_STEPS, _INIT_PRICE, _P_NORMAL, _P_VOLATILE, _rng())
         assert result.p_stay_normal == pytest.approx(_P_NORMAL)
         assert result.p_stay_volatile == pytest.approx(_P_VOLATILE)
 

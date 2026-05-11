@@ -258,9 +258,7 @@ class TestFailsafeManagerRecovery:
         self._descend_to_ins_only(mgr)
         # 2 recovery epochs, then 1 bad epoch
         for _ in range(2):
-            mgr.update(
-                n_active=6, spoofing_prob=0.0, entropy_alert=False, osnma_all_failed=False
-            )
+            mgr.update(n_active=6, spoofing_prob=0.0, entropy_alert=False, osnma_all_failed=False)
         mgr.update(
             n_active=6,
             spoofing_prob=_SPOOFING_INS_ONLY_THRESH + 0.01,
@@ -273,12 +271,8 @@ class TestFailsafeManagerRecovery:
     def test_recovery_streak_field_increments(self) -> None:
         mgr = FailsafeManager(min_sats=4, recovery_thresh=5)
         self._descend_to_ins_only(mgr)
-        s1 = mgr.update(
-            n_active=6, spoofing_prob=0.0, entropy_alert=False, osnma_all_failed=False
-        )
-        s2 = mgr.update(
-            n_active=6, spoofing_prob=0.0, entropy_alert=False, osnma_all_failed=False
-        )
+        s1 = mgr.update(n_active=6, spoofing_prob=0.0, entropy_alert=False, osnma_all_failed=False)
+        s2 = mgr.update(n_active=6, spoofing_prob=0.0, entropy_alert=False, osnma_all_failed=False)
         assert s2.recovery_streak == s1.recovery_streak + 1
 
 
