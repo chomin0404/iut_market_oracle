@@ -57,9 +57,15 @@ class TestCPTSanity:
     @pytest.mark.parametrize(
         "key",
         [
-            ("low", "low"), ("low", "mid"), ("low", "high"),
-            ("normal", "low"), ("normal", "mid"), ("normal", "high"),
-            ("high", "low"), ("high", "mid"), ("high", "high"),
+            ("low", "low"),
+            ("low", "mid"),
+            ("low", "high"),
+            ("normal", "low"),
+            ("normal", "mid"),
+            ("normal", "high"),
+            ("high", "low"),
+            ("high", "mid"),
+            ("high", "high"),
         ],
     )
     def test_demand_level_cpt_rows_sum_to_one(self, key: tuple[str, str]):

@@ -191,7 +191,7 @@ class ScenarioResult(BaseModel):
 class ExperimentMeta(BaseModel):
     """Metadata envelope for a single reproducible experiment run."""
 
-    experiment_id: str = Field(..., pattern=r"^exp-\d{3}$", description="e.g. 'exp-001'")
+    experiment_id: str = Field(..., pattern=r"^exp-\d+$", description="e.g. 'exp-001'")
     title: str = Field(..., min_length=1)
     config_path: str = Field(..., description="Relative path to config file used")
     result_path: str | None = None
@@ -223,7 +223,7 @@ class DigitalTwinState(BaseModel):
         Non-negative integer time step index.
     """
 
-    experiment_id: str = Field(..., pattern=r"^exp-\d{3}$", description="e.g. 'exp-001'")
+    experiment_id: str = Field(..., pattern=r"^exp-\d+$", description="e.g. 'exp-001'")
     state_vector: list[float] = Field(..., min_length=1)
     state_labels: list[str] = Field(..., min_length=1)
     param_snapshot: dict[str, float] = Field(default_factory=dict)
@@ -248,7 +248,7 @@ class SimulationResult(BaseModel):
         trajectories[i][t] is the state vector at step t for sample i.
     """
 
-    experiment_id: str = Field(..., pattern=r"^exp-\d{3}$")
+    experiment_id: str = Field(..., pattern=r"^exp-\d+$")
     trajectories: list[list[list[float]]] = Field(..., min_length=1)
     n_samples: int = Field(..., ge=1)
     horizon: int = Field(..., ge=1)
@@ -538,7 +538,7 @@ class EntropyAlert(BaseModel):
         The configured threshold that was exceeded.
     """
 
-    experiment_id: str = Field(..., pattern=r"^exp-\d{3}$")
+    experiment_id: str = Field(..., pattern=r"^exp-\d+$")
     triggered_at: int = Field(..., ge=0)
     alert_type: AlertType
     metric_value: float
@@ -561,7 +561,7 @@ class EntropyReport(BaseModel):
         All alerts fired during monitoring.
     """
 
-    experiment_id: str = Field(..., pattern=r"^exp-\d{3}$")
+    experiment_id: str = Field(..., pattern=r"^exp-\d+$")
     entropy_series: list[float] = Field(..., min_length=1)
     kl_series: list[float] = Field(..., min_length=1)
     entropy_rate_series: list[float] = Field(default_factory=list)
@@ -823,7 +823,7 @@ class IdeaInput(BaseModel):
         "simulation",
         "causal_inference",
         "decision_support",
-    ] = Field(..., description="Primary modeling goal.")
+    ] = Field(default="prediction", description="Primary modeling goal.")
     time_horizon: Literal["static", "sequential", "continuous"] = Field(
         default="static",
         description="Temporal structure of the problem.",

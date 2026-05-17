@@ -1,0 +1,12 @@
+experiment_id: exp-005
+title: DCF report — 2026-05-16
+config_path: configs\scenarios
+result_path: reports\exp-005
+note_path: null
+random_seed: null
+tags:
+- dcf
+- report
+- automated
+created_at: '2026-05-16T12:55:06.490033+00:00'
+summary: 'Automated report: 3 scenarios. Base EV = 6,942 JPY millions.'

@@ -100,20 +100,16 @@ def _compute_roc(
         return [0.0, 1.0], [0.0, 1.0], 0.5
 
     thresholds = np.linspace(s_min, s_max, _ROC_N_THRESHOLDS)
-    fpr_list: list[float] = []
-    tpr_list: list[float] = []
+    pos = labels == 1
+    n_pos = int(pos.sum())
+    n_neg = int((~pos).sum())
+    # pred[k, i] = True iff scores[i] >= thresholds[k]  — shape (T, N)
+    pred = scores[None, :] >= thresholds[:, None]
+    tp_arr = (pred & pos[None, :]).sum(axis=1).astype(float)
+    fp_arr = (pred & (~pos)[None, :]).sum(axis=1).astype(float)
+    tpr_arr = tp_arr / max(n_pos, 1)
+    fpr_arr = fp_arr / max(n_neg, 1)
 
-    for tau in thresholds:
-        pred = scores >= tau
-        tp = int((pred & (labels == 1)).sum())
-        fp = int((pred & (labels == 0)).sum())
-        fn = int((~pred & (labels == 1)).sum())
-        tn = int((~pred & (labels == 0)).sum())
-        tpr_list.append(tp / (tp + fn) if (tp + fn) > 0 else 0.0)
-        fpr_list.append(fp / (fp + tn) if (fp + tn) > 0 else 0.0)
-
-    order = np.argsort(fpr_list)
-    fpr_sorted = np.array(fpr_list)[order]
-    tpr_sorted = np.array(tpr_list)[order]
-    auc = float(np.trapezoid(tpr_sorted, fpr_sorted))
-    return fpr_list, tpr_list, max(0.0, min(1.0, auc))
+    order = np.argsort(fpr_arr)
+    auc = float(np.trapezoid(tpr_arr[order], fpr_arr[order]))
+    return fpr_arr.tolist(), tpr_arr.tolist(), max(0.0, min(1.0, auc))

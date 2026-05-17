@@ -30,8 +30,9 @@ The calibrated DigitalTwinState embeds the result as:
 
 from __future__ import annotations
 
+import datetime as _dt
 import math
-from datetime import UTC, datetime
+from datetime import datetime
 
 from bayesian.updater import update
 from schemas import (
@@ -105,7 +106,7 @@ def calibrate(
             "sigma": posterior_sigma,
         },
         step=len(observations),
-        timestamp=datetime.now(UTC),
+        timestamp=datetime.now(_dt.timezone.utc),
     )
 
     return posterior, state

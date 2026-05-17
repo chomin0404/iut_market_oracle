@@ -18,10 +18,11 @@ Usage::
 
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -172,7 +173,7 @@ def _write_audit_entry(
     audit_path.parent.mkdir(parents=True, exist_ok=True)
 
     record = {
-        "timestamp": datetime.now(UTC).isoformat(),
+        "timestamp": datetime.now(_dt.timezone.utc).isoformat(),
         "model_id": model_id,
         "event": event,
         **detail,

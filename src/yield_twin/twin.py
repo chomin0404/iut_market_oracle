@@ -176,8 +176,8 @@ class YieldTwinConfig:
     def __post_init__(self) -> None:
         if not self.factor_specs:
             raise ValueError("factor_specs must not be empty")
-        if self.n_candidates < 10:
-            raise ValueError("n_candidates must be >= 10")
+        if self.n_candidates < 2:
+            raise ValueError("n_candidates must be >= 2")
 
     @property
     def n_factors(self) -> int:

@@ -33,7 +33,6 @@ the Cartesian-product factor multiplication is fast enough.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import product as _iproduct
 
 import numpy as np
 
@@ -86,8 +85,9 @@ class _Factor:
 def _factor_product(f1: _Factor, f2: _Factor) -> _Factor:
     """Return φ₁ × φ₂ over the union of their variables.
 
-    Handles scalar (empty-variable) factors as a special case.
-    Iterates over the Cartesian product of states for correctness and clarity.
+    Uses NumPy broadcasting: permute axes to union_vars order, insert
+    size-1 axes for absent variables, broadcast to target shape, multiply.
+    O(∏|states|) array ops instead of a Python-level Cartesian-product loop.
     """
     # Scalar cases
     if not f1.variables:
@@ -104,16 +104,20 @@ def _factor_product(f1: _Factor, f2: _Factor) -> _Factor:
         **dict(zip(f1.variables, f1.values.shape)),
         **dict(zip(f2.variables, f2.values.shape)),
     }
-    shape = tuple(state_counts[v] for v in union_vars)
-    result = np.empty(shape, dtype=float)
+    target_shape = tuple(state_counts[v] for v in union_vars)
 
-    for joint in _iproduct(*(range(state_counts[v]) for v in union_vars)):
-        state = dict(zip(union_vars, joint))
-        i1 = tuple(state[v] for v in f1.variables)
-        i2 = tuple(state[v] for v in f2.variables)
-        result[joint] = f1.values[i1] * f2.values[i2]
+    def _expand(factor: _Factor) -> np.ndarray:
+        # Reorder existing axes to match union_vars order
+        existing = [v for v in union_vars if v in factor.variables]
+        perm = [factor.variables.index(v) for v in existing]
+        arr: np.ndarray = factor.values.transpose(perm)
+        # Insert size-1 axes at positions for absent variables
+        new_axes = [i for i, v in enumerate(union_vars) if v not in factor.variables]
+        if new_axes:
+            arr = np.expand_dims(arr, axis=new_axes)
+        return np.broadcast_to(arr, target_shape)
 
-    return _Factor(variables=union_vars, values=result)
+    return _Factor(union_vars, _expand(f1) * _expand(f2))
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +169,8 @@ class BayesianNetwork:
         self._parents: dict[str, list[str]] = {}  # child  → [parent, ...]
         self._children: dict[str, list[str]] = {}  # parent → [child, ...]
         self._evidence: dict[str, int] = {}  # node_id → state index
+        self._dirichlet_alpha: dict[str, np.ndarray] = {}  # CPT-shaped Dirichlet α
+        self._dirichlet_counts: dict[str, np.ndarray] = {}  # accumulated counts
 
     # ------------------------------------------------------------------
     # Structure definition
@@ -466,6 +472,123 @@ class BayesianNetwork:
             return {q: self.posterior(q) for q in queries}
         finally:
             self._evidence = saved
+
+    # ------------------------------------------------------------------
+    # Dirichlet CPT update (Bayesian online learning)
+    # ------------------------------------------------------------------
+
+    def init_dirichlet(self, node_id: str, equivalent_sample_size: float = 10.0) -> None:
+        """Initialise Dirichlet prior parameters from the current CPT.
+
+        α = CPT_row × equivalent_sample_size
+
+        A larger *equivalent_sample_size* makes the prior more resistant to
+        updating from new observations.
+
+        Parameters
+        ----------
+        node_id:
+            Node whose CPT is used as the prior mean.
+        equivalent_sample_size:
+            Pseudocount total per CPT row (must be > 0).
+
+        Raises
+        ------
+        ValueError
+            If the CPT for *node_id* has not been set yet.
+        """
+        spec = self._require_node(node_id)
+        if spec.cpt is None:
+            raise ValueError(f"CPT not set for '{node_id}'; call set_prior() or set_cpt() first")
+        if equivalent_sample_size <= 0:
+            raise ValueError("equivalent_sample_size must be positive")
+        self._dirichlet_alpha[node_id] = spec.cpt.copy() * float(equivalent_sample_size)
+        self._dirichlet_counts[node_id] = np.zeros_like(spec.cpt)
+
+    def accumulate_counts(self, node_id: str, counts: np.ndarray) -> None:
+        """Add *counts* to the Dirichlet observation counts for *node_id*.
+
+        Parameters
+        ----------
+        node_id:
+            Node with an initialised Dirichlet prior.
+        counts:
+            Array of the same shape as the CPT for *node_id*.
+
+        Raises
+        ------
+        KeyError
+            If :meth:`init_dirichlet` was not called for *node_id*.
+        ValueError
+            If *counts* has the wrong shape or contains negative values.
+        """
+        if node_id not in self._dirichlet_counts:
+            raise KeyError(
+                f"Dirichlet prior not initialised for '{node_id}'; call init_dirichlet() first"
+            )
+        arr = np.asarray(counts, dtype=float)
+        if arr.shape != self._dirichlet_counts[node_id].shape:
+            raise ValueError(
+                f"counts shape {arr.shape} does not match CPT shape "
+                f"{self._dirichlet_counts[node_id].shape} for '{node_id}'"
+            )
+        if np.any(arr < 0):
+            raise ValueError("counts must be non-negative")
+        self._dirichlet_counts[node_id] = self._dirichlet_counts[node_id] + arr
+
+    def observe_batch(self, observations: list[dict[str, str]]) -> None:
+        """Accumulate CPT counts from a batch of observations.
+
+        Each observation is a mapping node_id → state string.  For every
+        node that has an initialised Dirichlet prior, the matching count
+        cell is incremented by 1.  Observations with missing parent states
+        are silently skipped.
+
+        Parameters
+        ----------
+        observations:
+            List of dicts, each mapping node_id → observed state label.
+        """
+        for obs in observations:
+            for node_id, state in obs.items():
+                if node_id not in self._dirichlet_counts:
+                    continue
+                spec = self._specs[node_id]
+                if state not in spec.states:
+                    continue
+                child_idx = spec.states.index(state)
+                parents = self._parents[node_id]
+                if parents:
+                    try:
+                        parent_idx = tuple(self._specs[p].states.index(obs[p]) for p in parents)
+                    except KeyError:
+                        continue  # parent state absent from this observation
+                    self._dirichlet_counts[node_id][(*parent_idx, child_idx)] += 1.0
+                else:
+                    self._dirichlet_counts[node_id][child_idx] += 1.0
+
+    def apply_dirichlet_posterior(self, node_id: str) -> None:
+        """Update the CPT for *node_id* with the Dirichlet posterior mean.
+
+        Posterior: Dir(α + counts), mean = (α + n) / Σ(α + n).
+
+        Information gain relative to the prior:
+            ΔH = H(prior_mean) − H(posterior_mean)   [per CPT row]
+
+        Raises
+        ------
+        KeyError
+            If :meth:`init_dirichlet` was not called for *node_id*.
+        """
+        if node_id not in self._dirichlet_alpha:
+            raise KeyError(
+                f"Dirichlet prior not initialised for '{node_id}'; call init_dirichlet() first"
+            )
+        spec = self._require_node(node_id)
+        alpha = self._dirichlet_alpha[node_id]
+        counts = self._dirichlet_counts[node_id]
+        posterior = alpha + counts
+        spec.cpt = posterior / posterior.sum(axis=-1, keepdims=True)
 
     # ------------------------------------------------------------------
     # Utilities

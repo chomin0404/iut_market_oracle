@@ -1,0 +1,64 @@
+id: growth_fragmentation
+name: Growth-Fragmentation Equation (Bertoin) — Drone Swarm Control
+category: stochastic_process
+tags: [fragmentation, swarm_control, wasserstein, gillespie, malthus]
+problem_type: Stochastic growth-fragmentation process with optimal control for drone swarm capability-score distribution.
+objective: Estimate Malthus parameter λ and eigenfunction φ(x); simulate Marcus-Lushnikov process; minimize W₂ coverage cost.
+state_variables:
+  - "x: capability score of a drone sub-swarm (continuous, x > 0)"
+  - "n(t,x): number density of sub-swarms with score x at time t in L1_+"
+  - "mu_N = (1/N) sum delta_{xi}: empirical measure (observable)"
+observables:
+  - "particle sizes {xi}_{i=1}^N"
+  - "empirical measure mu_N"
+  - "fragmentation event log (time, parent size, daughter sizes)"
+parameters:
+  - "tau_coef: growth rate coefficient a in tau(x)=a*x  [units: 1/time, domain: [0,+inf)]"
+  - "kappa_0: baseline fragmentation rate  [units: 1/time, domain: (0,+inf)]"
+  - "alpha: fragmentation exponent in kappa(x)=kappa_0*x^alpha  [domain: [0,+inf)]"
+  - "beta (loss_efficiency): x1+x2=beta*x_parent, beta in (0,1)  [A2]"
+  - "df: Student-t degrees of freedom for initial distribution (>=3)  [A5]"
+constraints:
+  - "x > 0 (capability score strictly positive)"
+  - "integral_0^y p(x,y)dx = 2 (daughter kernel normalization)"
+  - "phi(x) >= 0 (eigenfunction non-negative)"
+  - "lambda in R (real Malthus parameter)"
+  - "W2 requires finite 2nd moments — enforced by df>=3 and x_max truncation"
+uncertainty:
+  initial_dist: "Truncated Student-t(nu=3) on (x_min, x_max) — heavy tails, finite 2nd moment"
+  daughters: "U ~ Uniform(0,1); x1=U*beta*y, x2=(1-U)*beta*y"
+equations:
+  - "GFE: d_t n(t,x) + d_x(tau(x)*n) = -kappa(x)*n + integral_x^inf p(x,y)*kappa(y)*n(y)dy"
+  - "growth_rate: tau(x) = tau_coef * x  (exact ODE: x(t) = x0*exp(tau_coef*t))"
+  - "frag_rate: kappa(x,u) = kappa_0 * x^alpha * (1+u)  (u: control input)"
+  - "daughter_kernel: p(x,y) = 2/(beta*y) for 0<=x<=beta*y  (uniform binary split)"
+  - "eigenproblem: lambda*phi(x) + d_x(tau(x)*phi) = -kappa(x)*phi + integral p(x,y)*kappa(y)*phi(y)dy"
+  - "wasserstein_cost: W2^2(mu_N, mu*) = integral_0^1 (Q_{mu_N}(t) - Q_{mu*}(t))^2 dt"
+priors:
+  x0: "Truncated Student-t(nu=3, loc=init_loc, scale=init_scale) on (x_min, x_max)"
+loss_function: "W2^2(mu_N(T), mu*) = (1/N) sum (x_(k) - Q_{mu*}(k/(N+1)))^2  (sorted-quantile)"
+solver: Gillespie exact CTMC (Marcus-Lushnikov); Malthus estimated via log(N(t)) linear regression
+outputs:
+  - "malthus_lambda: float — dominant eigenvalue of GFE operator (Gillespie regression)"
+  - "eigenfunction_x: list[float] — grid bin centers"
+  - "eigenfunction_phi: list[float] — normalized empirical density phi(x) >= 0"
+  - "trajectory: list[ParticleSnapshot] — Gillespie event log"
+  - "cost_w2: float — W2^2(mu_N(T), mu*)"
+  - "score_components: dict — {coverage_loss, n_fragments, mean_size}"
+  - "reasons: list[str] — fragmentation event log"
+assumptions:
+  - "A1: binary split only (no ternary or higher-order fragmentation)"
+  - "A2: loss — x1+x2=beta*x_parent, beta in (0,1)"
+  - "A3: growth and fragmentation are independent processes"
+  - "A4: discrete event-driven control — policy evaluated at each fragmentation event"
+  - "A5: initial distribution is Truncated Student-t(nu>=3), finite 2nd moment"
+  - "A6: absorption boundary at x_min > 0 (particles below threshold removed)"
+evidence_needed:
+  - "Target distribution mu* (mean and std for Gaussian proxy)"
+  - "Fragmentation parameters: kappa_0, alpha, beta"
+  - "Time horizon T and particle cap n_particles_max"
+references:
+  - "Bertoin J. (2006). Random Fragmentation and Coagulation Processes. Cambridge UP."
+  - "Gillespie D.T. (1977). Exact stochastic simulation of coupled chemical reactions. J. Phys. Chem."
+  - "Villani C. (2008). Optimal Transport: Old and New. Springer."
+  - "Norris J.R. (1999). Smoluchowski coagulation equation. Ann. Appl. Probab."

@@ -27,9 +27,10 @@ Cloud Functions deployment note:
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -205,7 +206,7 @@ async def handle_report_requested(event: dict) -> dict:
         lines: list[str] = [
             f"# ModelForge Report — `{mid}`",
             "",
-            f"*Generated: {datetime.now(UTC).isoformat()}*",
+            f"*Generated: {datetime.now(_dt.timezone.utc).isoformat()}*",
             "",
         ]
 

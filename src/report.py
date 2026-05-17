@@ -38,11 +38,13 @@ matplotlib.use("Agg")
 
 import argparse
 import csv
+import datetime as _dt
 import io
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 
 from experiments.tracker import create_experiment, update_experiment
 from schemas import ScenarioResult
@@ -99,7 +101,7 @@ def _scenario_comparison_chart(
 
     ax.set_xlabel("Enterprise Value (JPY millions)")
     ax.set_title("DCF Scenario Comparison")
-    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{x:,.0f}"))
     ax.invert_yaxis()
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
@@ -256,7 +258,7 @@ def run_report(
     scenario_dir = Path(scenario_dir)
     reports_dir = Path(reports_dir)
     experiments_root = Path(experiments_root)
-    generated_at = datetime.now(UTC)
+    generated_at = datetime.now(_dt.timezone.utc)
 
     # 1. Load and run all scenarios
     results: list[ScenarioResult] = []

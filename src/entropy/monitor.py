@@ -258,14 +258,16 @@ def compute_kl(
         If required param keys are absent from prior.params.
     """
     if _is_normal(prior):
-        mu_p = float(prior.params.get("mean", 0.0))
+        mu_p = float(prior.params.get("mean", prior.params.get("mu", 0.0)))
         if "std" in prior.params:
             var_p = float(prior.params["std"]) ** 2
+        elif "sigma" in prior.params:
+            var_p = float(prior.params["sigma"]) ** 2
         elif "variance" in prior.params:
             var_p = float(prior.params["variance"])
         else:
             raise KeyError(
-                "Normal prior must have 'std' or 'variance' in params; "
+                "Normal prior must have 'std', 'sigma', or 'variance' in params; "
                 f"got keys {list(prior.params.keys())}"
             )
         return kl_normal(posterior.mean, posterior.variance, mu_p, var_p)

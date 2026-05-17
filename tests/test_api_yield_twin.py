@@ -182,6 +182,6 @@ def test_low_ge_high_factor_spec_returns_422() -> None:
 
 
 def test_n_candidates_too_small_returns_422() -> None:
-    payload = {**_BASE_PAYLOAD, "n_candidates": 5}
+    payload = {**_BASE_PAYLOAD, "n_candidates": 1}  # ge=2, so 1 is invalid
     resp = client.post("/yield-twin/recommend", json=payload)
     assert resp.status_code == 422

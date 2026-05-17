@@ -205,7 +205,7 @@ def _panel_doppler_residuals(
         cmap="RdBu_r",
         vmin=-vmax,
         vmax=vmax,
-        extent=[float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, n_sats - 0.5],
+        extent=(float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, float(n_sats) - 0.5),
     )
     cb = plt.colorbar(im, ax=ax, pad=0.01)
     cb.set_label("Doppler residual [Hz]", fontsize=8)
@@ -286,7 +286,7 @@ def _panel_subset(
             cmap="YlGn",
             vmin=0.0,
             vmax=1.0,
-            extent=[float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, n_sats - 0.5],
+            extent=(float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, float(n_sats) - 0.5),
         )
         cb = plt.colorbar(im, ax=ax_heat, pad=0.01)
         cb.set_label("weight", fontsize=7)
@@ -300,7 +300,7 @@ def _panel_subset(
             cmap="Reds",
             vmin=0.0,
             vmax=1.0,
-            extent=[float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, n_sats - 0.5],
+            extent=(float(ep[0]) - 0.5, float(ep[-1]) + 0.5, -0.5, float(n_sats) - 0.5),
         )
         cb = plt.colorbar(im, ax=ax_heat, pad=0.01)
         cb.set_label("GMM γ", fontsize=7)

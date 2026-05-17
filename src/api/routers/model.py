@@ -90,7 +90,7 @@ _GENERATE_EXAMPLES = {
 
 @router.post("/recommend", response_model=ModelRecommendation)
 def recommend_model(
-    req: Annotated[RecommendRequest, Body(openapi_examples=_RECOMMEND_EXAMPLES)],
+    req: Annotated[RecommendRequest, Body(openapi_examples=_RECOMMEND_EXAMPLES)],  # type: ignore[arg-type]
 ) -> ModelRecommendation:
     """Recommend mathematical models for a problem description using the Anthropic API.
 
@@ -119,7 +119,7 @@ def recommend_model(
 
 @router.post("/generate", response_model=ModelSpec)
 def generate_model(
-    req: Annotated[GenerateRequest, Body(openapi_examples=_GENERATE_EXAMPLES)],
+    req: Annotated[GenerateRequest, Body(openapi_examples=_GENERATE_EXAMPLES)],  # type: ignore[arg-type]
 ) -> ModelSpec:
     """Generate a ModelSpec from a natural-language idea using the Anthropic API.
 

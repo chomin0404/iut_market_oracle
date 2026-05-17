@@ -45,7 +45,7 @@ class YieldTwinRequest(BaseModel):
     random_seed: int = Field(default=42, description="RNG seed for reproducibility")
     n_candidates: int = Field(
         default=2000,
-        ge=10,
+        ge=2,
         le=_N_CANDIDATES_MAX,
         description="Latin-Hypercube candidate set size",
     )

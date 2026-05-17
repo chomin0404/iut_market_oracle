@@ -494,7 +494,7 @@ def _mean_clustering(W: np.ndarray, thresh: float = 0.30) -> float:
         e = sum(A[a, b] for a in nbrs for b in nbrs if a < b)
         cc_sum += e / (d_i * (d_i - 1) / 2)
         n_counted += 1
-    return cc_sum / max(n_counted, 1)
+    return float(cc_sum / max(n_counted, 1))
 
 
 class StructDepMonitor:

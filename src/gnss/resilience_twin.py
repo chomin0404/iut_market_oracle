@@ -891,7 +891,6 @@ class StructuralDependencyMonitor:
             fiedler_anomaly: True if ρ_F > 1.0 this epoch
         """
         W = _build_graph(doppler_dev, self._graph_sigma)
-        n = W.shape[0]
 
         # Track consecutive Fiedler-anomaly epochs
         if fiedler_anomaly:
@@ -908,24 +907,19 @@ class StructuralDependencyMonitor:
             graph_change_rate = 0.0
         self._prev_W = W.copy()
 
-        # Mean clustering coefficient of thresholded adjacency graph
+        # Mean clustering coefficient via A³ diagonal: (A³)_{ii} = 2 × triangles through i
+        # cc_i = (A³)_{ii} / (d_i · (d_i − 1))  for nodes with degree ≥ 2
         A = (W > self._cluster_w_thresh).astype(float)
         np.fill_diagonal(A, 0.0)
         degree = A.sum(axis=1)
-        cc_sum = 0.0
-        n_counted = 0
-        for i in range(n):
-            d = int(degree[i])
-            if d >= 2:
-                nbrs = np.where(A[i] > 0)[0]
-                e_count = 0
-                for a_i in nbrs:
-                    for b_i in nbrs:
-                        if a_i < b_i:
-                            e_count += int(A[a_i, b_i])
-                cc_sum += e_count / (d * (d - 1) / 2)
-                n_counted += 1
-        clustering_coeff = cc_sum / max(n_counted, 1)
+        mask = degree >= 2
+        if mask.any():
+            A3_diag = (A @ A * A).sum(axis=1)  # diag(A³) via row-sum of (A²⊙A)
+            denom = np.where(mask, degree * (degree - 1), 1.0)
+            cc_vals = np.where(mask, A3_diag / denom, 0.0)
+            clustering_coeff = float(cc_vals[mask].mean())
+        else:
+            clustering_coeff = 0.0
 
         alert = self._streak >= self._streak_thresh or graph_change_rate > self._change_thresh
         return StructuralMonitorResult(
@@ -934,6 +928,31 @@ class StructuralDependencyMonitor:
             clustering_coeff=clustering_coeff,
             alert=alert,
         )
+
+
+# ---------------------------------------------------------------------------
+# Layer 10 helpers
+# ---------------------------------------------------------------------------
+
+
+def _lcc_curve_batch(W: np.ndarray, tau_grid: np.ndarray, n: int) -> np.ndarray:
+    """LCC fraction for every threshold in tau_grid via batched boolean transitive closure.
+
+    Builds the (K, n, n) adjacency stack and finds the reachability matrix for
+    each threshold using ceil(log₂ n) repeated squarings of (I + A).
+
+    Replaces K individual Python-BFS calls with vectorised NumPy matmul.
+    """
+    A = (W[None, :, :] > tau_grid[:, None, None]).astype(np.uint8)  # (K, n, n)
+    diag = np.arange(n)
+    A[:, diag, diag] = 0
+    # R = I + A;  repeated squaring gives R^{2^k} — reachability for paths ≤ 2^k
+    R = A.copy()
+    R[:, diag, diag] = 1
+    n_sq = max(int(np.ceil(np.log2(max(n, 2)))), 1)
+    for _ in range(n_sq):
+        R = (np.matmul(R.astype(np.int16), R.astype(np.int16)) > 0).astype(np.uint8)
+    return (R.sum(axis=2).max(axis=1) / n).astype(float)
 
 
 # ---------------------------------------------------------------------------
@@ -969,11 +988,7 @@ class DuminilCopinPhaseMonitor:
         W = _build_graph(doppler_dev, self._graph_sigma)
         n = W.shape[0]
 
-        lcc_curve = np.empty(len(self._tau_grid))
-        for k, tau in enumerate(self._tau_grid):
-            A = (W > tau).astype(np.uint8)
-            np.fill_diagonal(A, 0)
-            lcc_curve[k] = self._largest_cc_fraction(A, n)
+        lcc_curve = _lcc_curve_batch(W, self._tau_grid, n)
 
         # χ(τ) = |ΔLCC / Δτ|  at each midpoint of the τ grid
         delta_tau = float(self._tau_grid[1] - self._tau_grid[0])
@@ -1009,30 +1024,6 @@ class DuminilCopinPhaseMonitor:
             min_edge_weight=min_w,
             phase_alert=phase_alert,
         )
-
-    @staticmethod
-    def _largest_cc_fraction(A: np.ndarray, n: int) -> float:
-        """BFS — fraction of nodes in the largest connected component."""
-        if n == 0:
-            return 0.0
-        visited = np.zeros(n, dtype=bool)
-        max_cc = 0
-        for start in range(n):
-            if visited[start]:
-                continue
-            stack = [start]
-            visited[start] = True
-            cc_size = 0
-            while stack:
-                node = stack.pop()
-                cc_size += 1
-                for nbr in np.where(A[node] > 0)[0]:
-                    if not visited[nbr]:
-                        visited[nbr] = True
-                        stack.append(int(nbr))
-            if cc_size > max_cc:
-                max_cc = cc_size
-        return max_cc / n
 
 
 # ---------------------------------------------------------------------------

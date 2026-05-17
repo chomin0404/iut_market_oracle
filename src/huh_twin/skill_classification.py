@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+
+    class StrEnum(str, Enum):  # type: ignore[no-redef]
+        """str + Enum backport for Python 3.10."""
+
+
 from typing import Final
 
 

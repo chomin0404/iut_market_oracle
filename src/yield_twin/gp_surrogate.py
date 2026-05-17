@@ -192,6 +192,7 @@ class GPSurrogate:
 
         if best_theta is None:
             best_theta = np.zeros(n_params)
+        assert best_theta is not None
 
         signal_var = math.exp(best_theta[0]) ** 2
         length_scales = tuple(float(v) for v in np.exp(best_theta[1 : d + 1]))
@@ -216,7 +217,7 @@ class GPSurrogate:
             mu:    (m,) posterior mean
             sigma: (m,) posterior standard deviation  ≥ 0
         """
-        if self._X is None or self._alpha is None or self._hyperparams is None:
+        if self._X is None or self._alpha is None or self._hyperparams is None or self._cf is None:
             m = len(X_star)
             return np.zeros(m), np.ones(m) * float("inf")
 
