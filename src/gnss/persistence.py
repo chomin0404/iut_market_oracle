@@ -31,6 +31,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -144,6 +145,66 @@ def load_twin_run(path: str | Path) -> dict[str, Any]:
         raise ValueError(f"Unsupported schema_version '{version}'; expected '{SCHEMA_VERSION}'")
 
     return data
+
+
+def purge_old_runs(
+    max_age_days: int = 7,
+    output_dir: Path | None = None,
+) -> int:
+    """Delete run directories older than *max_age_days*.
+
+    Age is determined by the ``produced_at`` field in ``twin_run.json``.
+    If the JSON is unreadable the directory's mtime is used as a fallback.
+
+    Parameters
+    ----------
+    max_age_days:
+        Runs older than this many days are removed.  Default: 7.
+    output_dir:
+        Base directory to scan.  Defaults to ``<project_root>/output``.
+
+    Returns
+    -------
+    int
+        Number of run directories deleted.
+    """
+    base = output_dir if output_dir is not None else _DEFAULT_OUTPUT_DIR
+    if not base.exists():
+        return 0
+
+    now = datetime.now(timezone.utc)
+    deleted = 0
+
+    for run_dir in base.iterdir():
+        if not run_dir.is_dir():
+            continue
+
+        age_days = _run_age_days(run_dir, now)
+        if age_days is not None and age_days > max_age_days:
+            shutil.rmtree(run_dir)
+            deleted += 1
+
+    return deleted
+
+
+def _run_age_days(run_dir: Path, now: datetime) -> float | None:
+    """Return the age of *run_dir* in days, or ``None`` on error."""
+    json_path = run_dir / "twin_run.json"
+    if json_path.exists():
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+            produced_at = datetime.fromisoformat(data["produced_at"])
+            if produced_at.tzinfo is None:
+                produced_at = produced_at.replace(tzinfo=timezone.utc)
+            return (now - produced_at).total_seconds() / 86400
+        except (KeyError, ValueError, OSError):
+            pass
+    # Fallback: directory mtime
+    try:
+        mtime = datetime.fromtimestamp(run_dir.stat().st_mtime, tz=timezone.utc)
+        return (now - mtime).total_seconds() / 86400
+    except OSError:
+        return None
 
 
 # ---------------------------------------------------------------------------

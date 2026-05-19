@@ -1,4 +1,4 @@
-.PHONY: all fmt lint test test-cov run report ci clean help
+.PHONY: all fmt lint test test-cov run report ci clean clean-runs help
 
 all: lint test
 
@@ -11,6 +11,7 @@ help:
 	@echo "make report   - generate report"
 	@echo "make ci       - lint + test-cov + report"
 	@echo "make clean    - remove generated files"
+	@echo "make clean-runs [DAYS=7] - delete output/ run dirs older than DAYS days"
 
 fmt:
 	uv run ruff format .
@@ -37,3 +38,7 @@ ci: lint test-cov report
 clean:
 	rm -rf .pytest_cache .ruff_cache .coverage htmlcov
 	rm -f output/*.json output/*.csv output/*.png
+
+DAYS ?= 7
+clean-runs:
+	uv run python -c "from gnss.persistence import purge_old_runs; n = purge_old_runs(max_age_days=$(DAYS)); print(f'Deleted {n} run(s) older than $(DAYS) day(s).')"

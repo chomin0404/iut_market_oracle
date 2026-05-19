@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,7 @@ from gnss.persistence import (
     SCHEMA_VERSION,
     load_twin_run,
     new_run_id,
+    purge_old_runs,
     save_twin_run,
 )
 
@@ -264,3 +266,73 @@ class TestTwinRunApiPersistence:
         full = _PROJECT_ROOT / body["result_path"]
         data = json.loads(full.read_text(encoding="utf-8"))
         assert len(data["request"]["observations"]) == _N_EPOCHS
+
+
+# ---------------------------------------------------------------------------
+# purge_old_runs
+# ---------------------------------------------------------------------------
+
+
+def _make_run(base: Path, run_id: str, produced_at: str) -> Path:
+    """Write a minimal twin_run.json with the given produced_at timestamp."""
+    run_dir = base / run_id
+    run_dir.mkdir(parents=True)
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "run_id": run_id,
+        "produced_at": produced_at,
+        "request": {},
+        "report": {},
+    }
+    (run_dir / "twin_run.json").write_text(json.dumps(payload), encoding="utf-8")
+    return run_dir
+
+
+class TestPurgeOldRuns:
+    def test_empty_dir_returns_zero(self, tmp_path: Path) -> None:
+        assert purge_old_runs(max_age_days=7, output_dir=tmp_path) == 0
+
+    def test_nonexistent_dir_returns_zero(self, tmp_path: Path) -> None:
+        assert purge_old_runs(max_age_days=7, output_dir=tmp_path / "missing") == 0
+
+    def test_old_run_is_deleted(self, tmp_path: Path) -> None:
+        _make_run(tmp_path, "oldrun01", "2000-01-01T00:00:00+00:00")
+        deleted = purge_old_runs(max_age_days=7, output_dir=tmp_path)
+        assert deleted == 1
+        assert not (tmp_path / "oldrun01").exists()
+
+    def test_recent_run_is_kept(self, tmp_path: Path) -> None:
+        now = datetime.now(timezone.utc)
+        recent_ts = now.replace(microsecond=0).isoformat()
+        _make_run(tmp_path, "newrun01", recent_ts)
+        deleted = purge_old_runs(max_age_days=7, output_dir=tmp_path)
+        assert deleted == 0
+        assert (tmp_path / "newrun01").exists()
+
+    def test_mixed_runs(self, tmp_path: Path) -> None:
+        now = datetime.now(timezone.utc)
+        _make_run(tmp_path, "old00001", "2000-01-01T00:00:00+00:00")
+        _make_run(tmp_path, "new00001", now.replace(microsecond=0).isoformat())
+        deleted = purge_old_runs(max_age_days=7, output_dir=tmp_path)
+        assert deleted == 1
+        assert not (tmp_path / "old00001").exists()
+        assert (tmp_path / "new00001").exists()
+
+    def test_returns_count(self, tmp_path: Path) -> None:
+        for i in range(3):
+            _make_run(tmp_path, f"old0000{i}", "2000-01-01T00:00:00+00:00")
+        assert purge_old_runs(max_age_days=7, output_dir=tmp_path) == 3
+
+    def test_fallback_to_mtime_for_corrupt_json(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "badrun01"
+        run_dir.mkdir()
+        (run_dir / "twin_run.json").write_text("{invalid json", encoding="utf-8")
+        # mtime is current → should be kept
+        deleted = purge_old_runs(max_age_days=7, output_dir=tmp_path)
+        assert deleted == 0
+
+    def test_non_directory_entries_ignored(self, tmp_path: Path) -> None:
+        (tmp_path / "stray_file.txt").write_text("x", encoding="utf-8")
+        deleted = purge_old_runs(max_age_days=7, output_dir=tmp_path)
+        assert deleted == 0
+        assert (tmp_path / "stray_file.txt").exists()
