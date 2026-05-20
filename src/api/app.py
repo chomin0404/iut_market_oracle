@@ -41,6 +41,7 @@ from api.routers import (
     matroid,
     model,
     report,
+    risk,
     strategy,
     twin,
     valuation,
@@ -134,6 +135,13 @@ _TAGS_METADATA = [
             "+ Expected Improvement fusion — sequential experiment recommendation."
         ),
     },
+    {
+        "name": "risk",
+        "description": (
+            "Monte Carlo risk analysis: copula-based simulation, VaR/ES, "
+            "exceedance curves, and bootstrap confidence bands."
+        ),
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -204,6 +212,7 @@ app.include_router(ideas.router, prefix="/ideas", tags=["ideas"])
 app.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
 app.include_router(forge.router, prefix="/forge", tags=["forge"])
 app.include_router(yield_twin.router, prefix="/yield-twin", tags=["yield-twin"])
+app.include_router(risk.router, prefix="/api/v1", tags=["risk"])
 
 # ---------------------------------------------------------------------------
 # System endpoints
