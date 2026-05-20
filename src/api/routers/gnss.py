@@ -170,7 +170,7 @@ def simulate(req: SimulateRequest) -> SimulateResponse:
             attack_prob=req.attack_prob,
             seed=req.seed,
         )
-    except Exception as e:
+    except (ValueError, RuntimeError, OSError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     return SimulateResponse(
@@ -217,7 +217,7 @@ def verify_key(req: VerifyKeyRequest) -> VerifyKeyResponse:
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except (TypeError, AttributeError) as e:
         raise HTTPException(status_code=422, detail=f"Invalid hex or key format: {e}")
 
     return VerifyKeyResponse(
@@ -283,7 +283,7 @@ def detect(req: DetectRequest) -> DetectResponse:
                 )
     except HTTPException:
         raise
-    except Exception as e:
+    except (RuntimeError, ValueError, KeyError, AttributeError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     detected_count = sum(1 for r in results if r.spoofing_detected)

@@ -1,8 +1,8 @@
 """Tests for Monte Carlo risk API endpoints.
 
 Covers:
-    POST /api/v1/simulate
-    POST /api/v1/risk/boundary
+    POST /risk/simulate
+    POST /risk/boundary
 """
 
 from __future__ import annotations
@@ -35,23 +35,23 @@ _BASE_SIMULATE_BODY = {
 
 @pytest.fixture(scope="module")
 def simulation_id() -> str:
-    resp = client.post("/api/v1/simulate", json=_BASE_SIMULATE_BODY)
+    resp = client.post("/risk/simulate", json=_BASE_SIMULATE_BODY)
     assert resp.status_code == 200
     return resp.json()["simulation_id"]
 
 
 # ---------------------------------------------------------------------------
-# POST /api/v1/simulate
+# POST /risk/simulate
 # ---------------------------------------------------------------------------
 
 
 class TestSimulate:
     def test_success_returns_200(self) -> None:
-        resp = client.post("/api/v1/simulate", json=_BASE_SIMULATE_BODY)
+        resp = client.post("/risk/simulate", json=_BASE_SIMULATE_BODY)
         assert resp.status_code == 200
 
     def test_response_schema(self) -> None:
-        resp = client.post("/api/v1/simulate", json=_BASE_SIMULATE_BODY)
+        resp = client.post("/risk/simulate", json=_BASE_SIMULATE_BODY)
         data = resp.json()
         assert "simulation_id" in data
         assert data["n_samples"] == _BASE_SIMULATE_BODY["n_samples"]
@@ -63,24 +63,24 @@ class TestSimulate:
     def test_simulation_id_is_uuid(self) -> None:
         import uuid
 
-        resp = client.post("/api/v1/simulate", json=_BASE_SIMULATE_BODY)
+        resp = client.post("/risk/simulate", json=_BASE_SIMULATE_BODY)
         uid = resp.json()["simulation_id"]
         uuid.UUID(uid)  # raises ValueError if not valid UUID
 
     def test_deterministic_with_seed(self) -> None:
-        r1 = client.post("/api/v1/simulate", json=_BASE_SIMULATE_BODY).json()["summary"]
-        r2 = client.post("/api/v1/simulate", json=_BASE_SIMULATE_BODY).json()["summary"]
+        r1 = client.post("/risk/simulate", json=_BASE_SIMULATE_BODY).json()["summary"]
+        r2 = client.post("/risk/simulate", json=_BASE_SIMULATE_BODY).json()["summary"]
         assert math.isclose(r1["mean"], r2["mean"], rel_tol=1e-9)
         assert math.isclose(r1["var_95"], r2["var_95"], rel_tol=1e-9)
 
     def test_var_95_less_than_es_95(self) -> None:
-        resp = client.post("/api/v1/simulate", json=_BASE_SIMULATE_BODY)
+        resp = client.post("/risk/simulate", json=_BASE_SIMULATE_BODY)
         summary = resp.json()["summary"]
         assert summary["es_95"] >= summary["var_95"]
 
     def test_distributions_count_mismatch_returns_422(self) -> None:
         body = {**_BASE_SIMULATE_BODY, "n_vars": 3}
-        resp = client.post("/api/v1/simulate", json=body)
+        resp = client.post("/risk/simulate", json=body)
         assert resp.status_code == 422
 
     def test_unsupported_copula_returns_400(self) -> None:
@@ -88,7 +88,7 @@ class TestSimulate:
             **_BASE_SIMULATE_BODY,
             "copula": {"type": "clayton", "corr_matrix": [[1, 0.5], [0.5, 1]]},
         }
-        resp = client.post("/api/v1/simulate", json=body)
+        resp = client.post("/risk/simulate", json=body)
         assert resp.status_code == 400
 
     def test_unsupported_distribution_returns_400(self) -> None:
@@ -99,12 +99,12 @@ class TestSimulate:
                 {"name": "normal", "params": {"loc": 0.0, "scale": 1.0}},
             ],
         }
-        resp = client.post("/api/v1/simulate", json=body)
+        resp = client.post("/risk/simulate", json=body)
         assert resp.status_code == 400
 
     def test_n_samples_too_large_returns_422(self) -> None:
         body = {**_BASE_SIMULATE_BODY, "n_samples": 200_000}
-        resp = client.post("/api/v1/simulate", json=body)
+        resp = client.post("/risk/simulate", json=body)
         assert resp.status_code == 422
 
     def test_gev_distribution_works(self) -> None:
@@ -115,13 +115,13 @@ class TestSimulate:
             "copula": {"type": "gaussian", "corr_matrix": [[1.0]]},
             "seed": 1,
         }
-        resp = client.post("/api/v1/simulate", json=body)
+        resp = client.post("/risk/simulate", json=body)
         assert resp.status_code == 200
         assert resp.json()["summary"]["mean"] > 0
 
 
 # ---------------------------------------------------------------------------
-# POST /api/v1/risk/boundary
+# POST /risk/boundary
 # ---------------------------------------------------------------------------
 
 
@@ -134,7 +134,7 @@ class TestRiskBoundary:
             "confidence_level": 0.95,
             "bootstrap_n": 100,
         }
-        resp = client.post("/api/v1/risk/boundary", json=body)
+        resp = client.post("/risk/boundary", json=body)
         assert resp.status_code == 200
 
     def test_response_schema(self, simulation_id: str) -> None:
@@ -143,7 +143,7 @@ class TestRiskBoundary:
             "thresholds": [1.0, 2.0, 3.0, 4.0, 5.0],
             "bootstrap_n": 100,
         }
-        resp = client.post("/api/v1/risk/boundary", json=body)
+        resp = client.post("/risk/boundary", json=body)
         data = resp.json()
         assert data["thresholds"] == [1.0, 2.0, 3.0, 4.0, 5.0]
         assert len(data["exceedance_probs"]) == 5
@@ -158,7 +158,7 @@ class TestRiskBoundary:
             "thresholds": [0.5, 1.0, 1.5, 2.0, 3.0],
             "bootstrap_n": 50,
         }
-        probs = client.post("/api/v1/risk/boundary", json=body).json()["exceedance_probs"]
+        probs = client.post("/risk/boundary", json=body).json()["exceedance_probs"]
         for p_prev, p_next in zip(probs, probs[1:]):
             assert p_prev >= p_next - 1e-9, "exceedance_probs must be non-increasing"
 
@@ -168,7 +168,7 @@ class TestRiskBoundary:
             "thresholds": [1.0, 2.0],
             "bootstrap_n": 200,
         }
-        data = client.post("/api/v1/risk/boundary", json=body).json()
+        data = client.post("/risk/boundary", json=body).json()
         for i in range(2):
             p = data["exceedance_probs"][i]
             lo = data["confidence_band"]["lower"][i]
@@ -184,7 +184,7 @@ class TestRiskBoundary:
             "thresholds": [1.0, 2.0, 3.0],
             "bootstrap_n": 50,
         }
-        resp = client.post("/api/v1/risk/boundary", json=body)
+        resp = client.post("/risk/boundary", json=body)
         assert resp.status_code == 200
         probs = resp.json()["exceedance_probs"]
         # 6 of 10 samples exceed 1.0
@@ -195,7 +195,7 @@ class TestRiskBoundary:
             "simulation_id": "00000000-0000-0000-0000-000000000000",
             "thresholds": [1.0],
         }
-        resp = client.post("/api/v1/risk/boundary", json=body)
+        resp = client.post("/risk/boundary", json=body)
         assert resp.status_code == 404
 
     def test_out_of_range_variable_index_returns_400(self, simulation_id: str) -> None:
@@ -204,12 +204,12 @@ class TestRiskBoundary:
             "target_variable_index": 99,
             "thresholds": [1.0],
         }
-        resp = client.post("/api/v1/risk/boundary", json=body)
+        resp = client.post("/risk/boundary", json=body)
         assert resp.status_code == 400
 
     def test_no_source_returns_422(self) -> None:
         body = {"thresholds": [1.0]}
-        resp = client.post("/api/v1/risk/boundary", json=body)
+        resp = client.post("/risk/boundary", json=body)
         assert resp.status_code == 422
 
     def test_es_greater_than_or_equal_var(self, simulation_id: str) -> None:
@@ -218,7 +218,7 @@ class TestRiskBoundary:
             "thresholds": [1.0],
             "bootstrap_n": 50,
         }
-        data = client.post("/api/v1/risk/boundary", json=body).json()
+        data = client.post("/risk/boundary", json=body).json()
         assert data["es_95"] >= data["var_95"]
 
 

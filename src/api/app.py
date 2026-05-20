@@ -212,7 +212,7 @@ app.include_router(ideas.router, prefix="/ideas", tags=["ideas"])
 app.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
 app.include_router(forge.router, prefix="/forge", tags=["forge"])
 app.include_router(yield_twin.router, prefix="/yield-twin", tags=["yield-twin"])
-app.include_router(risk.router, prefix="/api/v1", tags=["risk"])
+app.include_router(risk.router, prefix="/risk", tags=["risk"])
 
 # ---------------------------------------------------------------------------
 # System endpoints

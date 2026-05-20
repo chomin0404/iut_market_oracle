@@ -183,7 +183,7 @@ class GPSurrogate:
                     bounds=bounds,
                     options={"maxiter": 200, "ftol": 1e-10},
                 )
-            except Exception:  # noqa: BLE001
+            except (ValueError, np.linalg.LinAlgError):
                 continue
 
             if res.fun < best_nlml:

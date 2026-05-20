@@ -1,13 +1,14 @@
 """Monte Carlo risk analysis API endpoints.
 
-Routes (mounted at /api/v1):
-    POST /api/v1/simulate        — Copula-based MC simulation with marginal distributions.
-    POST /api/v1/risk/boundary   — Exceedance curve and bootstrap confidence band.
+Routes (mounted at /risk):
+    POST /risk/simulate    — Copula-based MC simulation with marginal distributions.
+    POST /risk/boundary    — Exceedance curve and bootstrap confidence band.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections import OrderedDict
 from typing import Annotated
 
 import numpy as np
@@ -24,12 +25,30 @@ from core.simulator import simulate_gaussian_copula
 
 router = APIRouter()
 
-# In-memory simulation cache: simulation_id -> np.ndarray (n_samples, n_vars)
-# No expiry — process lifetime cache per spec.
-_SIMULATION_CACHE: dict[str, np.ndarray] = {}
+# Bounded LRU simulation cache: simulation_id -> np.ndarray (n_samples, n_vars)
+# Oldest entries are evicted when the cache exceeds _CACHE_MAXSIZE.
+# NOTE: This is an in-process dict — not shared across Uvicorn workers.
+#       For multi-worker deployments, replace with Redis or a shared store.
+_CACHE_MAXSIZE = 200
+_SIMULATION_CACHE: OrderedDict[str, np.ndarray] = OrderedDict()
 
 MAX_N_SAMPLES = 100_000
 DEFAULT_ALPHA = 0.95
+
+
+def _cache_put(sim_id: str, arr: np.ndarray) -> None:
+    """Insert into the LRU cache, evicting the oldest entry if full."""
+    _SIMULATION_CACHE[sim_id] = arr
+    while len(_SIMULATION_CACHE) > _CACHE_MAXSIZE:
+        _SIMULATION_CACHE.popitem(last=False)
+
+
+def _cache_get(sim_id: str) -> np.ndarray | None:
+    """Retrieve and refresh recency of a cached simulation."""
+    if sim_id not in _SIMULATION_CACHE:
+        return None
+    _SIMULATION_CACHE.move_to_end(sim_id)
+    return _SIMULATION_CACHE[sim_id]
 
 # ---------------------------------------------------------------------------
 # Request / response schemas
@@ -134,6 +153,7 @@ class BoundaryResponse(BaseModel):
     response_model=SimulateResponse,
     tags=["risk"],
     summary="Run copula-based Monte Carlo simulation",
+    operation_id="risk_simulate",
 )
 def simulate(
     body: Annotated[
@@ -187,7 +207,7 @@ def simulate(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     sim_id = str(uuid.uuid4())
-    _SIMULATION_CACHE[sim_id] = samples
+    _cache_put(sim_id, samples)
 
     col = samples[:, 0]
     return SimulateResponse(
@@ -203,10 +223,11 @@ def simulate(
 
 
 @router.post(
-    "/risk/boundary",
+    "/boundary",
     response_model=BoundaryResponse,
     tags=["risk"],
     summary="Compute exceedance curve and confidence band",
+    operation_id="risk_boundary",
 )
 def risk_boundary(
     body: Annotated[
@@ -243,15 +264,15 @@ def risk_boundary(
     bounds computed by non-parametric bootstrap.
     """
     if body.simulation_id is not None:
-        if body.simulation_id not in _SIMULATION_CACHE:
+        arr = _cache_get(body.simulation_id)
+        if arr is None:
             raise HTTPException(
                 status_code=404,
                 detail=(
                     f"simulation_id {body.simulation_id!r} not found. "
-                    "Run POST /api/v1/simulate first."
+                    "Run POST /risk/simulate first."
                 ),
             )
-        arr = _SIMULATION_CACHE[body.simulation_id]
         idx = body.target_variable_index
         if idx >= arr.shape[1]:
             raise HTTPException(

@@ -70,7 +70,7 @@ def forge_run(model_id: str) -> ForgeReport:
         return forge.run(model_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, KeyError, RuntimeError, OSError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -90,7 +90,7 @@ def forge_verify(model_id: str) -> VerificationReport:
         return verify_yaml_file(yaml_path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, KeyError, RuntimeError, OSError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

@@ -113,7 +113,7 @@ def recommend_model(
         )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    except Exception as exc:
+    except (RuntimeError, OSError, AttributeError) as exc:
         raise HTTPException(status_code=502, detail=f"LLM API error: {exc}")
 
 
@@ -137,5 +137,5 @@ def generate_model(
         )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    except Exception as exc:
+    except (RuntimeError, OSError, AttributeError) as exc:
         raise HTTPException(status_code=502, detail=f"LLM API error: {exc}")

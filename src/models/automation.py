@@ -76,7 +76,7 @@ async def handle_registry_changed(event: dict) -> dict:
         report = verify_yaml_file(yaml_path)
         result["verification_overall"] = report.overall.value
         result["failed_checks"] = [c.name for c in report.checks if c.status.value == "fail"]
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError, KeyError, yaml.YAMLError) as exc:
         result["verification_overall"] = "error"
         result["error"] = str(exc)
         return result
@@ -88,7 +88,7 @@ async def handle_registry_changed(event: dict) -> dict:
         result["forge_status"] = "ok"
         result["skeleton_path"] = forge_report.skeleton_code_path
         result["trace_node_ids"] = forge_report.trace_node_ids
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
         result["forge_status"] = "error"
         result["forge_error"] = str(exc)
 
@@ -129,7 +129,7 @@ async def handle_forge_requested(event: dict) -> dict:
             "skeleton_path": report.skeleton_code_path,
             "trace_node_ids": report.trace_node_ids,
         }
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
         return {"model_id": model_id, "forge_status": "error", "error": str(exc)}
 
 
@@ -170,7 +170,7 @@ async def handle_verify_requested(event: dict) -> dict:
                 for c in report.checks
             ],
         }
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError, KeyError, yaml.YAMLError) as exc:
         return {"model_id": model_id, "overall": "error", "error": str(exc)}
 
 
@@ -234,7 +234,7 @@ async def handle_report_requested(event: dict) -> dict:
                     for a in spec["assumptions"]:
                         lines.append(f"- {a}")
                     lines.append("")
-            except Exception as exc:  # noqa: BLE001
+            except (OSError, KeyError, TypeError, yaml.YAMLError) as exc:
                 lines.append(f"*(spec snapshot unreadable: {exc})*\n")
 
         # Verification results
@@ -255,7 +255,7 @@ async def handle_report_requested(event: dict) -> dict:
                     msg = c.get("message") or ""
                     lines.append(f"| `{c['name']}` | `{c['status'].upper()}` | {msg} |")
                 lines.append("")
-            except Exception as exc:  # noqa: BLE001
+            except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
                 lines.append(f"*(verification.json unreadable: {exc})*\n")
 
         # Skeleton code path

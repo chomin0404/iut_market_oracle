@@ -285,7 +285,7 @@ def list_experiments(
     for exp_dir in dirs:
         try:
             results.append(read_meta(exp_dir))
-        except Exception:
+        except (OSError, ValueError, KeyError, yaml.YAMLError):
             pass  # corrupted meta — skip, do not fail the listing
 
     return results

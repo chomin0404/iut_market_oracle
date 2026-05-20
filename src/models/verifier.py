@@ -186,7 +186,7 @@ def verify_yaml_file(yaml_path: Path) -> VerificationReport:
         data = yaml.safe_load(raw_bytes)
         entry = ModelRegistryEntry(**data)
         checks.append(VerificationCheck(name="schema_valid", status=VerificationStatus.PASS))
-    except Exception as exc:  # noqa: BLE001
+    except (yaml.YAMLError, ValueError, TypeError, KeyError) as exc:
         checks.append(
             VerificationCheck(
                 name="schema_valid",
