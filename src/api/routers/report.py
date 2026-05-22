@@ -3,21 +3,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from api.schemas.report import ReportRequest, ReportResponse
 from report import run_report
 
 router = APIRouter()
-
-
-class ReportRequest(BaseModel):
-    scenario_dir: str = "configs/scenarios"
-    reports_dir: str = "reports"
-    experiments_root: str = "experiments"
-
-
-class ReportResponse(BaseModel):
-    artifacts: dict[str, str]
 
 
 @router.post("/run", response_model=ReportResponse)

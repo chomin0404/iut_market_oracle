@@ -3,49 +3,20 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
 
+from api.schemas.exit_ import (
+    CompareRequest,
+    PriceAllRequest,
+    PriceRequest,
+    PriceWithTimingRequest,
+    PriceWithTimingResponse,
+    TimingMapRequest,
+)
 from exit.option_pricer import price_all_options, price_option
 from exit.timing_map import build_timing_map, compare_exit_options, price_with_timing_map
-from schemas import ExitOption, ExitValueSummary, TimingDistribution
+from schemas import ExitValueSummary, TimingDistribution
 
 router = APIRouter()
-
-
-# ---------------------------------------------------------------------------
-# Request models
-# ---------------------------------------------------------------------------
-
-
-class PriceRequest(BaseModel):
-    option: ExitOption
-    scenario_probs: dict[str, float] | None = None
-
-
-class PriceAllRequest(BaseModel):
-    options: list[ExitOption]
-    scenario_probs: dict[str, float] | None = None
-
-
-class TimingMapRequest(BaseModel):
-    option: ExitOption
-    n_steps: int = Field(default=40, ge=2)
-
-
-class PriceWithTimingRequest(BaseModel):
-    option: ExitOption
-    timing: TimingDistribution
-    scenario_probs: dict[str, float] | None = None
-
-
-class PriceWithTimingResponse(BaseModel):
-    expected_value: float
-
-
-class CompareRequest(BaseModel):
-    options: list[ExitOption]
-    n_steps: int = Field(default=40, ge=2)
-    scenario_probs: dict[str, float] | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -14,8 +14,8 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
 
+from api.schemas.forge import AuditEntry, TraceGraphResponse
 from models.forge import ModelForge
 from models.trace import TraceGraph
 from models.verifier import verify_all, verify_yaml_file
@@ -25,27 +25,6 @@ router = APIRouter()
 
 _REGISTRY_DIR = Path("configs") / "model_registry"
 _AUDIT_LOG = Path(".claude") / "audit" / "modelforge.jsonl"
-
-
-# ---------------------------------------------------------------------------
-# Response helpers
-# ---------------------------------------------------------------------------
-
-
-class AuditEntry(BaseModel):
-    timestamp: str
-    model_id: str
-    event: str
-    verification_overall: str | None = None
-
-
-class TraceGraphResponse(BaseModel):
-    nodes: list[dict] = Field(default_factory=list)
-    edges: list[dict] = Field(default_factory=list)
-
-
-class VerifyAllResponse(BaseModel):
-    results: dict[str, VerificationReport]
 
 
 # ---------------------------------------------------------------------------

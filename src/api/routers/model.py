@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException
-from pydantic import BaseModel, Field
 
+from api.schemas.model import GenerateRequest, RecommendRequest
 from models.registry import load_registry, search_registry
 from schemas import ModelRecommendation, ModelRegistryEntry, ModelSpec
 
@@ -14,19 +14,6 @@ router = APIRouter()
 
 # Load registry once at module import time.
 _registry: list[ModelRegistryEntry] = load_registry()
-
-
-class GenerateRequest(BaseModel):
-    idea: str = Field(..., min_length=1, description="Natural-language idea to formalise")
-    domain: str | None = Field(None, description="Optional domain hint, e.g. 'finance'")
-
-
-class RecommendRequest(BaseModel):
-    description: str = Field(..., min_length=1, description="Problem or phenomenon to model")
-    signals: list[str] | None = Field(
-        None,
-        description="Explicit problem characteristics, e.g. ['latent dynamics exist']",
-    )
 
 
 @router.get("/registry", response_model=list[ModelRegistryEntry])

@@ -30,6 +30,7 @@ import asyncio
 import datetime as _dt
 import json
 import sys
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -315,7 +316,7 @@ async def handle_report_requested(event: dict) -> dict:
 # Dispatcher
 # ---------------------------------------------------------------------------
 
-_HANDLERS: dict[str, object] = {
+_HANDLERS: dict[str, Callable[[dict], Awaitable[dict]]] = {
     "registry_changed": handle_registry_changed,
     "forge_requested": handle_forge_requested,
     "verify_requested": handle_verify_requested,
@@ -339,7 +340,7 @@ async def dispatch(event_type: str, event: dict) -> dict:
     handler = _HANDLERS.get(event_type)
     if handler is None:
         raise ValueError(f"Unknown event type: {event_type!r}. Valid types: {list(_HANDLERS)}")
-    return await handler(event)  # type: ignore[operator]
+    return await handler(event)
 
 
 # ---------------------------------------------------------------------------

@@ -3,17 +3,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from api.schemas.bayesian import UpdateRequest
 from bayesian.updater import update
-from schemas import Evidence, PosteriorSummary, PriorSpec
+from schemas import PosteriorSummary
 
 router = APIRouter()
-
-
-class UpdateRequest(BaseModel):
-    prior: PriorSpec
-    evidence: list[Evidence]
 
 
 @router.post("/update", response_model=PosteriorSummary)

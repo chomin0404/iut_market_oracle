@@ -3,44 +3,18 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
 
+from api.schemas.entropy import (
+    DetectRequest,
+    EntropyRequest,
+    EntropyResponse,
+    KLRequest,
+    KLResponse,
+)
 from entropy.monitor import compute_entropy, compute_kl, entropy_rate
-from schemas import AlertType, EntropyAlert, EntropyReport, PosteriorSummary, PriorSpec
+from schemas import AlertType, EntropyAlert, EntropyReport
 
 router = APIRouter()
-
-
-# ---------------------------------------------------------------------------
-# Request models
-# ---------------------------------------------------------------------------
-
-
-class EntropyRequest(BaseModel):
-    posterior: PosteriorSummary
-    prior: PriorSpec
-
-
-class EntropyResponse(BaseModel):
-    entropy: float
-
-
-class KLRequest(BaseModel):
-    posterior: PosteriorSummary
-    prior: PriorSpec
-
-
-class KLResponse(BaseModel):
-    kl_divergence: float
-
-
-class DetectRequest(BaseModel):
-    posteriors: list[PosteriorSummary] = Field(..., min_length=1)
-    prior: PriorSpec
-    experiment_id: str
-    kl_threshold: float = Field(default=0.5, gt=0.0)
-    entropy_gradient_threshold: float = Field(default=0.1, gt=0.0)
-    rolling_window: int = Field(default=3, ge=1)
 
 
 # ---------------------------------------------------------------------------

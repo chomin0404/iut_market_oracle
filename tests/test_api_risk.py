@@ -86,10 +86,68 @@ class TestSimulate:
     def test_unsupported_copula_returns_400(self) -> None:
         body = {
             **_BASE_SIMULATE_BODY,
-            "copula": {"type": "clayton", "corr_matrix": [[1, 0.5], [0.5, 1]]},
+            "copula": {"type": "frank"},
         }
         resp = client.post("/risk/simulate", json=body)
         assert resp.status_code == 400
+
+    def test_student_t_copula_returns_200(self) -> None:
+        body = {
+            **_BASE_SIMULATE_BODY,
+            "copula": {"type": "student_t", "corr_matrix": [[1, 0.6], [0.6, 1]], "df": 5.0},
+        }
+        resp = client.post("/risk/simulate", json=body)
+        assert resp.status_code == 200
+
+    def test_clayton_copula_returns_200(self) -> None:
+        body = {
+            "n_vars": 2,
+            "n_samples": 1000,
+            "distributions": [
+                {"name": "normal", "params": {"loc": 0.0, "scale": 1.0}},
+                {"name": "normal", "params": {"loc": 0.0, "scale": 1.0}},
+            ],
+            "copula": {"type": "clayton", "theta": 2.0},
+            "seed": 7,
+        }
+        resp = client.post("/risk/simulate", json=body)
+        assert resp.status_code == 200
+
+    def test_independent_copula_returns_200(self) -> None:
+        body = {
+            "n_vars": 2,
+            "n_samples": 1000,
+            "distributions": [
+                {"name": "normal", "params": {"loc": 0.0, "scale": 1.0}},
+                {"name": "normal", "params": {"loc": 0.0, "scale": 1.0}},
+            ],
+            "copula": {"type": "independent"},
+            "seed": 8,
+        }
+        resp = client.post("/risk/simulate", json=body)
+        assert resp.status_code == 200
+
+    def test_student_t_missing_df_returns_422(self) -> None:
+        body = {
+            **_BASE_SIMULATE_BODY,
+            "copula": {"type": "student_t", "corr_matrix": [[1, 0.6], [0.6, 1]]},
+        }
+        resp = client.post("/risk/simulate", json=body)
+        assert resp.status_code == 422
+
+    def test_clayton_missing_theta_returns_422(self) -> None:
+        body = {
+            "n_vars": 2,
+            "n_samples": 1000,
+            "distributions": [
+                {"name": "normal", "params": {"loc": 0.0, "scale": 1.0}},
+                {"name": "normal", "params": {"loc": 0.0, "scale": 1.0}},
+            ],
+            "copula": {"type": "clayton"},
+            "seed": 0,
+        }
+        resp = client.post("/risk/simulate", json=body)
+        assert resp.status_code == 422
 
     def test_unsupported_distribution_returns_400(self) -> None:
         body = {
@@ -220,6 +278,18 @@ class TestRiskBoundary:
         }
         data = client.post("/risk/boundary", json=body).json()
         assert data["es_95"] >= data["var_95"]
+
+    def test_bootstrap_reproducible_with_seed(self, simulation_id: str) -> None:
+        body = {
+            "simulation_id": simulation_id,
+            "thresholds": [1.0, 2.0],
+            "bootstrap_n": 200,
+            "bootstrap_seed": 42,
+        }
+        r1 = client.post("/risk/boundary", json=body).json()
+        r2 = client.post("/risk/boundary", json=body).json()
+        assert r1["confidence_band"]["lower"] == r2["confidence_band"]["lower"]
+        assert r1["confidence_band"]["upper"] == r2["confidence_band"]["upper"]
 
 
 # ---------------------------------------------------------------------------

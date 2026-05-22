@@ -20,6 +20,7 @@ import os
 import struct
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Protocol
 
 import numpy as np
 from cryptography.exceptions import InvalidSignature
@@ -227,6 +228,14 @@ class OSNMATransmitter:
 # ---------------------------------------------------------------------------
 
 
+class _AuthorityProtocol(Protocol):
+    """Structural type for OSNMA/RLWE authority objects."""
+
+    def verify_root_sig(
+        self, kroot: bytes, epoch: int, params: dict[str, int], sig: bytes
+    ) -> bool: ...
+
+
 class OSNMAReceiver:
     """OSNMA receiver — TESLA chain + receipt-safety + MAC + quantum fidelity checks.
 
@@ -243,7 +252,7 @@ class OSNMAReceiver:
         root_sig: bytes,
         chain_root: bytes,
         root_epoch: int,
-        authority: object,
+        authority: _AuthorityProtocol,
         eph_oracle: Callable[[int, int], bytes] | None = None,
         fidelity_threshold: float = QUANTUM_FIDELITY_THRESHOLD,
     ) -> None:
@@ -255,7 +264,7 @@ class OSNMAReceiver:
         self._verified_buf_epochs: set[tuple[int, int]] = set()
         self._eph_oracle = eph_oracle
         self._fidelity = QuantumFidelityDetector(fidelity_threshold) if eph_oracle else None
-        if authority.verify_root_sig(chain_root, root_epoch, chain_params, root_sig):  # type: ignore[union-attr]
+        if authority.verify_root_sig(chain_root, root_epoch, chain_params, root_sig):
             self._verified_keys[root_epoch] = chain_root
 
     def receive(self, msg: NavMessage, receive_time_epoch: float) -> VerificationResult | None:
@@ -496,6 +505,28 @@ def _metrics(rows: list[dict]) -> dict:
     )
 
 
+def _emit_rows(
+    row_base: dict,
+    disc_at: str,
+    buf_at: str,
+    disc_epoch: int,
+    buf_epoch: int,
+) -> list[dict]:
+    """Build raw_rows entries for one verification event.
+
+    Emits one row per attacked epoch so each (svid, attack_epoch) dedup
+    group can independently pick up a detected=True row.
+    """
+    rows: list[dict] = []
+    if disc_at != "none":
+        rows.append({**row_base, "attack_type": disc_at, "attack_epoch": disc_epoch})
+    if buf_at != "none":
+        rows.append({**row_base, "attack_type": buf_at, "attack_epoch": buf_epoch})
+    if disc_at == "none" and buf_at == "none":
+        rows.append({**row_base, "attack_type": "none", "attack_epoch": buf_epoch})
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # Simulation entry point
 # ---------------------------------------------------------------------------
@@ -603,32 +634,9 @@ def run_simulation(
                     detected=result.detected,
                     quantum_anomaly=result.quantum_anomaly,
                 )
-                # Emit one row per attack epoch so each (svid, attack_epoch) dedup
-                # group can independently pick up a detected=True row.
-                if disc_at != "none":
-                    raw_rows.append(
-                        {
-                            **row_base,
-                            "attack_type": disc_at,
-                            "attack_epoch": result.disclosure_epoch,
-                        }
-                    )
-                if buf_at != "none":
-                    raw_rows.append(
-                        {
-                            **row_base,
-                            "attack_type": buf_at,
-                            "attack_epoch": result.epoch,
-                        }
-                    )
-                if disc_at == "none" and buf_at == "none":
-                    raw_rows.append(
-                        {
-                            **row_base,
-                            "attack_type": "none",
-                            "attack_epoch": result.epoch,
-                        }
-                    )
+                raw_rows.extend(
+                    _emit_rows(row_base, disc_at, buf_at, result.disclosure_epoch, result.epoch)
+                )
 
     # -----------------------------------------------------------------------
     # Fix 2: Flush boundary epochs whose key was never disclosed in the loop.
@@ -674,12 +682,7 @@ def run_simulation(
             detected=detected,
             quantum_anomaly=quantum_anomaly,
         )
-        if disc_at != "none":
-            raw_rows.append({**row_base, "attack_type": disc_at, "attack_epoch": disc_epoch})
-        if buf_at != "none":
-            raw_rows.append({**row_base, "attack_type": buf_at, "attack_epoch": buf_epoch})
-        if disc_at == "none" and buf_at == "none":
-            raw_rows.append({**row_base, "attack_type": "none", "attack_epoch": buf_epoch})
+        raw_rows.extend(_emit_rows(row_base, disc_at, buf_at, disc_epoch, buf_epoch))
 
     deduped = _dedup(raw_rows)
     m = _metrics(deduped)

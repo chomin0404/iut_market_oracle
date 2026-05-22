@@ -13,15 +13,25 @@ from typing import Annotated
 
 import numpy as np
 from fastapi import APIRouter, Body, HTTPException
-from pydantic import BaseModel, Field, model_validator
 
+from api.schemas.risk import (
+    DEFAULT_ALPHA,
+    BoundaryRequest,
+    BoundaryResponse,
+    ConfidenceBand,
+    SimulateRequest,
+    SimulateResponse,
+    VariableSummary,
+)
 from core.risk_metrics import (
     compute_confidence_band,
     compute_es,
     compute_exceedance_curve,
     compute_var,
 )
-from core.simulator import simulate_gaussian_copula
+from core.simulator import MonteCarloSimulator
+
+_simulator = MonteCarloSimulator()
 
 router = APIRouter()
 
@@ -31,9 +41,6 @@ router = APIRouter()
 #       For multi-worker deployments, replace with Redis or a shared store.
 _CACHE_MAXSIZE = 200
 _SIMULATION_CACHE: OrderedDict[str, np.ndarray] = OrderedDict()
-
-MAX_N_SAMPLES = 100_000
-DEFAULT_ALPHA = 0.95
 
 
 def _cache_put(sim_id: str, arr: np.ndarray) -> None:
@@ -49,98 +56,6 @@ def _cache_get(sim_id: str) -> np.ndarray | None:
         return None
     _SIMULATION_CACHE.move_to_end(sim_id)
     return _SIMULATION_CACHE[sim_id]
-
-# ---------------------------------------------------------------------------
-# Request / response schemas
-# ---------------------------------------------------------------------------
-
-
-class DistributionSpec(BaseModel):
-    name: str = Field(
-        ...,
-        description=(
-            "Distribution name. Supported: normal, lognormal, t, uniform, gev, expon, beta, gamma."
-        ),
-    )
-    params: dict[str, float] = Field(
-        default_factory=dict,
-        description="scipy.stats keyword arguments (e.g. loc, scale, s, df, c).",
-    )
-
-
-class CopulaSpec(BaseModel):
-    type: str = Field("gaussian", description="Copula type. Currently only 'gaussian'.")
-    corr_matrix: list[list[float]] = Field(
-        ..., description="Symmetric positive-definite correlation matrix (n_vars × n_vars)."
-    )
-
-
-class SimulateRequest(BaseModel):
-    n_vars: int = Field(..., ge=1, le=20, description="Number of variables.")
-    n_samples: int = Field(..., ge=100, le=MAX_N_SAMPLES, description="Number of MC samples.")
-    distributions: list[DistributionSpec] = Field(
-        ..., description="Marginal distribution for each variable (length must equal n_vars)."
-    )
-    copula: CopulaSpec
-    seed: int | None = Field(None, description="Random seed for reproducibility.")
-
-    @model_validator(mode="after")
-    def _check_dimensions(self) -> SimulateRequest:
-        if len(self.distributions) != self.n_vars:
-            raise ValueError(
-                f"distributions has {len(self.distributions)} entries but n_vars={self.n_vars}"
-            )
-        rows = len(self.copula.corr_matrix)
-        if rows != self.n_vars:
-            raise ValueError(f"corr_matrix has {rows} rows but n_vars={self.n_vars}")
-        return self
-
-
-class VariableSummary(BaseModel):
-    mean: float
-    std: float
-    var_95: float = Field(..., description="95th-percentile VaR of variable index 0.")
-    es_95: float = Field(..., description="95% Expected Shortfall of variable index 0.")
-
-
-class SimulateResponse(BaseModel):
-    simulation_id: str = Field(..., description="UUID for downstream /risk/boundary calls.")
-    n_samples: int
-    summary: VariableSummary = Field(..., description="Summary statistics for variable index 0.")
-
-
-class BoundaryRequest(BaseModel):
-    simulation_id: str | None = Field(None, description="ID returned by POST /api/v1/simulate.")
-    samples: list[float] | None = Field(
-        None, description="Raw samples (alternative to simulation_id)."
-    )
-    target_variable_index: int = Field(
-        0, ge=0, description="Column index in the stored simulation array."
-    )
-    thresholds: list[float] = Field(..., min_length=1, description="Threshold values.")
-    confidence_level: float = Field(
-        DEFAULT_ALPHA, ge=0.5, lt=1.0, description="Confidence level for VaR/ES."
-    )
-    bootstrap_n: int = Field(500, ge=10, le=5000, description="Bootstrap resamples.")
-
-    @model_validator(mode="after")
-    def _check_source(self) -> BoundaryRequest:
-        if self.simulation_id is None and self.samples is None:
-            raise ValueError("Provide either simulation_id or samples.")
-        return self
-
-
-class ConfidenceBand(BaseModel):
-    lower: list[float]
-    upper: list[float]
-
-
-class BoundaryResponse(BaseModel):
-    thresholds: list[float]
-    exceedance_probs: list[float]
-    confidence_band: ConfidenceBand
-    var_95: float
-    es_95: float
 
 
 # ---------------------------------------------------------------------------
@@ -186,30 +101,35 @@ def simulate(
     """Run a copula-based Monte Carlo simulation.
 
     Generates *n_samples* draws from a multivariate distribution whose marginals
-    are joined by a Gaussian copula. The result is cached in memory under a UUID
+    are joined by the specified copula. The result is cached in memory under a UUID
     that can be passed to `POST /api/v1/risk/boundary`.
+
+    Supported copulas: gaussian, student_t, clayton, independent.
     """
-    if body.copula.type != "gaussian":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported copula type: {body.copula.type!r}. Only 'gaussian' is supported.",
-        )
+    copula_dict: dict = {"type": body.copula.type}
+    if body.copula.corr_matrix is not None:
+        copula_dict["corr_matrix"] = body.copula.corr_matrix
+    if body.copula.df is not None:
+        copula_dict["df"] = body.copula.df
+    if body.copula.theta is not None:
+        copula_dict["theta"] = body.copula.theta
 
     try:
-        samples = simulate_gaussian_copula(
+        result = _simulator.simulate(
             n_vars=body.n_vars,
             n_samples=body.n_samples,
             distributions=[d.model_dump() for d in body.distributions],
-            corr_matrix=body.copula.corr_matrix,
+            copula=copula_dict,
             seed=body.seed,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Cache as (n_samples, n_vars) for column access in /boundary
     sim_id = str(uuid.uuid4())
-    _cache_put(sim_id, samples)
+    _cache_put(sim_id, result.samples.T)
 
-    col = samples[:, 0]
+    col = result.samples[0]  # variable index 0, shape (n_samples,)
     return SimulateResponse(
         simulation_id=sim_id,
         n_samples=body.n_samples,
@@ -287,7 +207,9 @@ def risk_boundary(
         col = np.asarray(body.samples, dtype=float)
 
     exc_probs = compute_exceedance_curve(col, body.thresholds)
-    band = compute_confidence_band(col, body.thresholds, bootstrap_n=body.bootstrap_n)
+    band = compute_confidence_band(
+        col, body.thresholds, bootstrap_n=body.bootstrap_n, seed=body.bootstrap_seed
+    )
     var = compute_var(col, body.confidence_level)
     es = compute_es(col, body.confidence_level)
 

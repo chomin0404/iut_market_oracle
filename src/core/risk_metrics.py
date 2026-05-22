@@ -66,6 +66,7 @@ def compute_confidence_band(
     samples: np.ndarray,
     thresholds: list[float],
     bootstrap_n: int = 500,
+    seed: int | None = None,
 ) -> dict[str, list[float]]:
     """Bootstrap 95% confidence band for the exceedance curve.
 
@@ -75,11 +76,12 @@ def compute_confidence_band(
         samples: 1-D array of samples.
         thresholds: List of threshold values.
         bootstrap_n: Number of bootstrap resamples.
+        seed: Random seed for reproducibility (None = non-deterministic).
 
     Returns:
         Dict {"lower": [...], "upper": [...]} with 2.5th and 97.5th percentile bounds.
     """
-    rng = np.random.default_rng(seed=None)
+    rng = np.random.default_rng(seed)
     n = len(samples)
     n_thresh = len(thresholds)
     thresh_arr = np.asarray(thresholds, dtype=float)
