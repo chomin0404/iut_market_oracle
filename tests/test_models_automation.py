@@ -79,9 +79,7 @@ class TestHandleRegistryChangedErrors:
         mock_forge = MagicMock()
         mock_forge.run.side_effect = RuntimeError("forge exploded")
         with patch("models.automation.ModelForge", return_value=mock_forge):
-            result = asyncio.run(
-                automation.handle_registry_changed({"model_id": "test_model"})
-            )
+            result = asyncio.run(automation.handle_registry_changed({"model_id": "test_model"}))
         assert result.get("forge_status") == "error"
         assert "forge_error" in result
 
@@ -140,9 +138,7 @@ class TestHandleForgeRequested:
 
         monkeypatch.setattr(ModelForge, "__init__", patched_init)
 
-        result = asyncio.run(
-            automation.handle_forge_requested({"model_id": "test_model"})
-        )
+        result = asyncio.run(automation.handle_forge_requested({"model_id": "test_model"}))
         assert result.get("forge_status") == "ok"
         assert "verification_overall" in result
 
@@ -178,9 +174,7 @@ class TestHandleForgeRequested:
         mock_forge = MagicMock()
         mock_forge.run.side_effect = ValueError("bad model")
         with patch("models.automation.ModelForge", return_value=mock_forge):
-            result = asyncio.run(
-                automation.handle_forge_requested({"model_id": "test_model"})
-            )
+            result = asyncio.run(automation.handle_forge_requested({"model_id": "test_model"}))
         assert result.get("forge_status") == "error"
         assert "error" in result
 
@@ -218,18 +212,14 @@ class TestHandleReportRequested:
             "equations": ["beta = (X^T X)^{-1} X^T y"],
             "assumptions": ["iid errors"],
         }
-        (model_dir / "spec_snapshot.yaml").write_text(
-            yaml.dump(spec), encoding="utf-8"
-        )
+        (model_dir / "spec_snapshot.yaml").write_text(yaml.dump(spec), encoding="utf-8")
 
         # verification.json
         verification = {
             "overall": "pass",
             "checks": [{"name": "schema_valid", "status": "pass", "message": None}],
         }
-        (model_dir / "verification.json").write_text(
-            json.dumps(verification), encoding="utf-8"
-        )
+        (model_dir / "verification.json").write_text(json.dumps(verification), encoding="utf-8")
 
         # impl_skeleton.py
         (model_dir / "impl_skeleton.py").write_text(
@@ -270,13 +260,11 @@ class TestHandleReportRequested:
     def test_report_all_models(self, tmp_path) -> None:
         from models import automation
 
-        reg_dir = _make_registry(tmp_path)
+        _make_registry(tmp_path)
         self._make_artifacts(tmp_path, "test_model")
 
         result = asyncio.run(
-            automation.handle_report_requested(
-                {"model_id": "all", "project_dir": str(tmp_path)}
-            )
+            automation.handle_report_requested({"model_id": "all", "project_dir": str(tmp_path)})
         )
         assert "results" in result
         assert "test_model" in result["results"]
@@ -284,7 +272,6 @@ class TestHandleReportRequested:
     def test_report_with_trace_nodes(self, tmp_path) -> None:
         """trace.jsonl present → traceability section rendered."""
         from models import automation
-        from models.trace import TraceGraph
 
         artifacts_dir = self._make_artifacts(tmp_path, "test_model")
 
