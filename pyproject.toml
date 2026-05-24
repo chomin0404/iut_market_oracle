@@ -28,6 +28,14 @@ src = ["src"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = [
+    "api", "bayesian", "core", "entropy", "exit", "experiments",
+    "fragmentation", "gnss", "graph", "huh_twin", "matroid",
+    "modeling_api", "models", "schemas", "strategy_twin",
+    "twin", "valuation", "yield_twin",
+]
+
 [tool.ruff.lint.per-file-ignores]
 # sys.path manipulation must precede matplotlib.use("Agg") and all other imports
 "src/report.py" = ["E402"]
