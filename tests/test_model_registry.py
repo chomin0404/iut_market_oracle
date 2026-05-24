@@ -76,31 +76,31 @@ class TestRegistryRouter:
         return TestClient(app)
 
     def test_list_registry(self, client) -> None:
-        resp = client.get("/model/registry")
+        resp = client.get("/api/v1/model/registry")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
         assert len(data) >= 10
 
     def test_get_kalman_filter(self, client) -> None:
-        resp = client.get("/model/registry/kalman_filter")
+        resp = client.get("/api/v1/model/registry/kalman_filter")
         assert resp.status_code == 200
         entry = resp.json()
         assert entry["id"] == "kalman_filter"
         assert "equations" in entry
 
     def test_get_unknown_model_returns_404(self, client) -> None:
-        resp = client.get("/model/registry/does_not_exist")
+        resp = client.get("/api/v1/model/registry/does_not_exist")
         assert resp.status_code == 404
 
     def test_filter_by_query(self, client) -> None:
-        resp = client.get("/model/registry", params={"query": "kalman"})
+        resp = client.get("/api/v1/model/registry", params={"query": "kalman"})
         assert resp.status_code == 200
         ids = [e["id"] for e in resp.json()]
         assert "kalman_filter" in ids
 
     def test_filter_by_tags(self, client) -> None:
-        resp = client.get("/model/registry", params={"tags": "bayesian"})
+        resp = client.get("/api/v1/model/registry", params={"tags": "bayesian"})
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) >= 1

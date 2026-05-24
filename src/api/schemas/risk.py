@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 MAX_N_SAMPLES = 100_000
@@ -121,3 +123,136 @@ class BoundaryResponse(BaseModel):
     confidence_band: ConfidenceBand
     var_95: float
     es_95: float
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity analysis
+# ---------------------------------------------------------------------------
+
+RiskMetric = Literal["var_95", "es_95", "var_99"]
+
+
+class SweepParameter(BaseModel):
+    target: str = Field(
+        ...,
+        description=('Target to sweep: "copula" or "distribution_{i}" (e.g. "distribution_0").'),
+    )
+    param_name: str = Field(
+        ...,
+        description=(
+            'Copula params: "corr_matrix_off_diagonal", "df", "theta". '
+            'Distribution params: any scipy.stats kwarg (e.g. "scale", "s").'
+        ),
+    )
+    values: list[float] = Field(..., min_length=1, description="Sweep values.")
+
+
+class SensitivityRequest(BaseModel):
+    base_config: SimulateRequest = Field(..., description="Base simulation configuration.")
+    sweep_parameter: SweepParameter
+    risk_metric: RiskMetric = Field(
+        "var_95", description='Risk metric to compute: "var_95", "es_95", "var_99".'
+    )
+    target_variable_index: int = Field(
+        0, ge=0, description="Variable index for risk metric computation."
+    )
+
+
+class SensitivityResponse(BaseModel):
+    parameter_values: list[float]
+    risk_values: list[float]
+    sensitivity_index: float = Field(
+        ...,
+        description="Relative range: (max - min) / |max|. Zero when |max| is zero.",
+    )
+    most_sensitive_at: float = Field(
+        ..., description="Parameter value at which the risk metric is highest."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tail analysis
+# ---------------------------------------------------------------------------
+
+
+class TailRequest(BaseModel):
+    simulation_id: str | None = Field(None, description="ID returned by POST /risk/simulate.")
+    samples: list[float] | None = Field(
+        None, description="Raw samples (alternative to simulation_id)."
+    )
+    target_variable_index: int = Field(
+        0, ge=0, description="Column index in the stored simulation array."
+    )
+    alphas: list[float] = Field(
+        ...,
+        min_length=1,
+        description="Confidence levels, e.g. [0.90, 0.95, 0.99]. Each must be in [0.5, 1).",
+    )
+
+    @model_validator(mode="after")
+    def _check_source(self) -> TailRequest:
+        if self.simulation_id is None and self.samples is None:
+            raise ValueError("Provide either simulation_id or samples.")
+        for a in self.alphas:
+            if not (0.5 <= a < 1.0):
+                raise ValueError(f"alpha={a} out of range; each alpha must be in [0.5, 1).")
+        return self
+
+
+class TailStatEntry(BaseModel):
+    alpha: float
+    var: float = Field(..., description="Value at Risk at the given confidence level.")
+    es: float = Field(..., description="Expected Shortfall (CVaR) at the given confidence level.")
+
+
+class TailResponse(BaseModel):
+    tail_stats: list[TailStatEntry]
+    n_samples: int
+
+
+# ---------------------------------------------------------------------------
+# GNSS scenario analysis
+# ---------------------------------------------------------------------------
+
+
+class GnssVariableSpec(BaseModel):
+    name: str = Field(..., description="Variable name, e.g. 'position_error_m'.")
+    distribution: DistributionSpec
+
+
+class GnssScenarioRequest(BaseModel):
+    scenario_name: str = Field(..., description="Human-readable scenario label.")
+    variables: list[GnssVariableSpec] = Field(..., min_length=1)
+    copula: CopulaSpec
+    n_samples: int = Field(10_000, ge=100, le=MAX_N_SAMPLES, description="Number of MC samples.")
+    seed: int | None = Field(None, description="Random seed for reproducibility.")
+    alphas: list[float] = Field(
+        default=[0.90, 0.95, 0.99],
+        min_length=1,
+        description="Confidence levels for VaR/ES. Each must be in [0.5, 1).",
+    )
+
+    @model_validator(mode="after")
+    def _check_dimensions(self) -> GnssScenarioRequest:
+        n_vars = len(self.variables)
+        if self.copula.corr_matrix is not None:
+            rows = len(self.copula.corr_matrix)
+            if rows != n_vars:
+                raise ValueError(f"corr_matrix has {rows} rows but variables has {n_vars} entries.")
+        for a in self.alphas:
+            if not (0.5 <= a < 1.0):
+                raise ValueError(f"alpha={a} out of range; each alpha must be in [0.5, 1).")
+        return self
+
+
+class GnssVariableResult(BaseModel):
+    name: str
+    mean: float
+    std: float
+    tail_stats: list[TailStatEntry]
+
+
+class GnssScenarioResponse(BaseModel):
+    scenario_name: str
+    n_samples: int
+    per_variable: list[GnssVariableResult]

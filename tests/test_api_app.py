@@ -23,6 +23,7 @@ def test_root_fields() -> None:
     body = client.get("/").json()
     assert body["title"] == "IUT Market Oracle API"
     assert body["version"] == "0.1.0"
+    assert body["api_prefix"] == "/api/v1"
     assert body["docs"] == "/docs"
     assert body["redoc"] == "/redoc"
     assert body["health"] == "/health"
@@ -45,6 +46,22 @@ def test_health_body() -> None:
     assert body["version"] == "0.1.0"
     assert isinstance(body["uptime_seconds"], float)
     assert body["uptime_seconds"] >= 0.0
+
+
+def test_health_features_field() -> None:
+    body = client.get("/health").json()
+    assert "features" in body
+    assert isinstance(body["features"], dict)
+
+
+def test_health_features_ideas_available_is_bool() -> None:
+    body = client.get("/health").json()
+    assert isinstance(body["features"]["ideas_available"], bool)
+
+
+def test_health_features_cors_restricted_is_bool() -> None:
+    body = client.get("/health").json()
+    assert isinstance(body["features"]["cors_restricted"], bool)
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +113,7 @@ def test_405_error_shape() -> None:
 
 def test_400_error_shape() -> None:
     # /valuation/dcf with invalid payload triggers 422 (validation)
-    resp = client.post("/valuation/dcf", json={"initial_fcf": -1.0})
+    resp = client.post("/api/v1/valuation/dcf", json={"initial_fcf": -1.0})
     assert resp.status_code == 422
     body = resp.json()
     assert body["status_code"] == 422

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Body, HTTPException
 
 from api.schemas.valuation import (
     DCFRequest,
@@ -16,6 +18,41 @@ from valuation.dcf import DCFInputs, dcf_valuation, reverse_dcf_implied_growth
 from valuation.scenario import run_all_scenarios, run_scenario
 
 router = APIRouter()
+
+_DCF_EXAMPLES = {
+    "saas_growth": {
+        "summary": "SaaS startup (high growth)",
+        "value": {
+            "initial_fcf": 5.0,
+            "growth_rate": 0.30,
+            "discount_rate": 0.12,
+            "forecast_years": 5,
+            "terminal_growth_rate": 0.03,
+        },
+    },
+    "mature_company": {
+        "summary": "Mature company (stable growth)",
+        "value": {
+            "initial_fcf": 100.0,
+            "growth_rate": 0.05,
+            "discount_rate": 0.08,
+            "forecast_years": 10,
+            "terminal_growth_rate": 0.02,
+        },
+    },
+}
+_REVERSE_DCF_EXAMPLES = {
+    "default": {
+        "summary": "Implied growth for given market cap",
+        "value": {
+            "target_enterprise_value": 500.0,
+            "initial_fcf": 20.0,
+            "discount_rate": 0.10,
+            "forecast_years": 5,
+            "terminal_growth_rate": 0.025,
+        },
+    },
+}
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +79,9 @@ def run_all_endpoint(req: RunAllRequest) -> list[ScenarioResult]:
 
 
 @router.post("/dcf", response_model=DCFResponse)
-def dcf_endpoint(req: DCFRequest) -> DCFResponse:
+def dcf_endpoint(
+    req: Annotated[DCFRequest, Body(openapi_examples=_DCF_EXAMPLES)],
+) -> DCFResponse:
     """Run raw DCF valuation from explicit inputs."""
     try:
         inputs = DCFInputs(
@@ -65,7 +104,9 @@ def dcf_endpoint(req: DCFRequest) -> DCFResponse:
 
 
 @router.post("/dcf/reverse", response_model=ReverseDCFResponse)
-def reverse_dcf_endpoint(req: ReverseDCFRequest) -> ReverseDCFResponse:
+def reverse_dcf_endpoint(
+    req: Annotated[ReverseDCFRequest, Body(openapi_examples=_REVERSE_DCF_EXAMPLES)],
+) -> ReverseDCFResponse:
     """Solve for the implied growth rate that produces the target enterprise value."""
     try:
         g = reverse_dcf_implied_growth(

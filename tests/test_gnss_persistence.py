@@ -228,31 +228,31 @@ class TestTwinRunApiPersistence:
     """Test that the API endpoint correctly exercises persistence."""
 
     def test_save_false_no_result_path(self) -> None:
-        r = client.post("/gnss/twin/run", json=_api_payload(save=False))
+        r = client.post("/api/v1/gnss/twin/run", json=_api_payload(save=False))
         assert r.status_code == 200
         body = r.json()
         assert body["result_path"] is None
 
     def test_save_false_run_id_present(self) -> None:
-        r = client.post("/gnss/twin/run", json=_api_payload(save=False))
+        r = client.post("/api/v1/gnss/twin/run", json=_api_payload(save=False))
         body = r.json()
         assert body["run_id"] is not None
         assert len(body["run_id"]) == 8
 
     def test_save_true_result_path_set(self) -> None:
-        r = client.post("/gnss/twin/run", json=_api_payload(save=True))
+        r = client.post("/api/v1/gnss/twin/run", json=_api_payload(save=True))
         assert r.status_code == 200
         body = r.json()
         assert body["result_path"] is not None
         assert "twin_run.json" in body["result_path"]
 
     def test_save_true_run_id_in_result_path(self) -> None:
-        r = client.post("/gnss/twin/run", json=_api_payload(save=True))
+        r = client.post("/api/v1/gnss/twin/run", json=_api_payload(save=True))
         body = r.json()
         assert body["run_id"] in body["result_path"]
 
     def test_save_true_file_exists_on_disk(self) -> None:
-        r = client.post("/gnss/twin/run", json=_api_payload(save=True))
+        r = client.post("/api/v1/gnss/twin/run", json=_api_payload(save=True))
         body = r.json()
         result_path = body["result_path"]
         full = _PROJECT_ROOT / result_path
@@ -261,7 +261,7 @@ class TestTwinRunApiPersistence:
         assert data["run_id"] == body["run_id"]
 
     def test_saved_file_contains_observations(self) -> None:
-        r = client.post("/gnss/twin/run", json=_api_payload(save=True))
+        r = client.post("/api/v1/gnss/twin/run", json=_api_payload(save=True))
         body = r.json()
         full = _PROJECT_ROOT / body["result_path"]
         data = json.loads(full.read_text(encoding="utf-8"))

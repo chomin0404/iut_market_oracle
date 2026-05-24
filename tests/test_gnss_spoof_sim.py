@@ -557,11 +557,11 @@ _FAST_PAYLOAD = {
 
 class TestSpooferSimEndpoint:
     def test_status_200(self):
-        r = client.post("/gnss/spoof-sim", json=_FAST_PAYLOAD)
+        r = client.post("/api/v1/gnss/spoof-sim", json=_FAST_PAYLOAD)
         assert r.status_code == 200
 
     def test_response_schema(self):
-        body = client.post("/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
+        body = client.post("/api/v1/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
         for field in (
             "roc_fpr",
             "roc_tpr",
@@ -578,25 +578,25 @@ class TestSpooferSimEndpoint:
             assert field in body, f"Missing field: {field}"
 
     def test_n_mc_echoed(self):
-        body = client.post("/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
+        body = client.post("/api/v1/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
         assert body["n_mc"] == _FAST_PAYLOAD["n_mc"]
 
     def test_subset_size_equal_n_sats_returns_400(self):
         r = client.post(
-            "/gnss/spoof-sim",
+            "/api/v1/gnss/spoof-sim",
             json={**_FAST_PAYLOAD, "n_sats": 5, "subset_size": 5},
         )
         assert r.status_code == 400
 
     def test_n_mc_above_max_returns_422(self):
-        r = client.post("/gnss/spoof-sim", json={**_FAST_PAYLOAD, "n_mc": 9999})
+        r = client.post("/api/v1/gnss/spoof-sim", json={**_FAST_PAYLOAD, "n_mc": 9999})
         assert r.status_code == 422
 
     def test_invalid_false_alarm_rate_returns_422(self):
-        r = client.post("/gnss/spoof-sim", json={**_FAST_PAYLOAD, "false_alarm_rate": 1.5})
+        r = client.post("/api/v1/gnss/spoof-sim", json={**_FAST_PAYLOAD, "false_alarm_rate": 1.5})
         assert r.status_code == 422
 
     def test_idempotent(self):
-        r1 = client.post("/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
-        r2 = client.post("/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
+        r1 = client.post("/api/v1/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
+        r2 = client.post("/api/v1/gnss/spoof-sim", json=_FAST_PAYLOAD).json()
         assert r1["auc"] == r2["auc"]

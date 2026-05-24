@@ -91,8 +91,8 @@ def simulate(req: SimulateRequest) -> SimulateResponse:
             attack_prob=req.attack_prob,
             seed=req.seed,
         )
-    except (ValueError, RuntimeError, OSError) as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (ValueError, RuntimeError, OSError):
+        raise HTTPException(status_code=500, detail="Simulation failed due to an internal error.")
 
     return SimulateResponse(
         total=report.total,
@@ -204,8 +204,8 @@ def detect(req: DetectRequest) -> DetectResponse:
                 )
     except HTTPException:
         raise
-    except (RuntimeError, ValueError, KeyError, AttributeError) as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (RuntimeError, ValueError, KeyError, AttributeError):
+        raise HTTPException(status_code=500, detail="Detection failed due to an internal error.")
 
     detected_count = sum(1 for r in results if r.spoofing_detected)
     return DetectResponse(

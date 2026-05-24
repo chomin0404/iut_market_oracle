@@ -2,29 +2,19 @@
 
 from __future__ import annotations
 
-import os
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Security
-from fastapi.security.api_key import APIKeyHeader
+from fastapi import APIRouter, Body, Depends, HTTPException
 
+from api.dependencies import make_api_key_dep
 from modeling_api.examples import EXAMPLE_IDEA_INPUT
 from schemas import IdeaInput, ParsedIdeaResponse
 
 router = APIRouter()
 
-_API_KEY_HEADER = APIKeyHeader(name="X-Ideas-API-Key", auto_error=False)
-
-
-def _check_api_key(key: str | None) -> None:
-    """Validate the X-Ideas-API-Key header if IDEAS_API_KEY env var is set.
-
-    If IDEAS_API_KEY is not set the endpoint is open (local/dev mode).
-    Raises HTTP 401 when the key is required but missing or wrong.
-    """
-    required = os.getenv("IDEAS_API_KEY")
-    if required and key != required:
-        raise HTTPException(status_code=401, detail="Invalid or missing X-Ideas-API-Key")
+# Dependency: validates X-Ideas-API-Key when IDEAS_API_KEY env var is set.
+# When IDEAS_API_KEY is unset the endpoint is open (local / dev mode).
+_require_ideas_key = make_api_key_dep("X-Ideas-API-Key", "IDEAS_API_KEY")
 
 
 @router.post("/parse", response_model=ParsedIdeaResponse)
@@ -40,7 +30,7 @@ async def parse_idea(
             }
         ),
     ],
-    api_key: str | None = Security(_API_KEY_HEADER),
+    _: None = Depends(_require_ideas_key),
 ) -> ParsedIdeaResponse:
     """Formalise a structured research idea into a ParsedIdeaResponse.
 
@@ -60,7 +50,6 @@ async def parse_idea(
     HTTP **503** if ``ANTHROPIC_API_KEY`` is not set,
     HTTP **502** for any API or parsing error.
     """
-    _check_api_key(api_key)
 
     try:
         from models.formalizer import parse_idea as _parse

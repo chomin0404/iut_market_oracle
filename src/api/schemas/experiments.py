@@ -13,7 +13,6 @@ class ExperimentCreateRequest(BaseModel):
     random_seed: int | None = None
     tags: list[str] = []
     summary: str = ""
-    experiments_root: str = "experiments"
 
 
 class ExperimentUpdateRequest(BaseModel):
@@ -21,4 +20,3 @@ class ExperimentUpdateRequest(BaseModel):
     note_path: str | None = None
     summary: str | None = None
     tags: list[str] | None = None
-    experiments_root: str = "experiments"

@@ -346,7 +346,7 @@ def client() -> TestClient:
 class TestMultiSensorSimEndpoint:
     def test_default_request(self, client: TestClient) -> None:
         resp = client.post(
-            "/gnss/multi-sensor-sim",
+            "/api/v1/gnss/multi-sensor-sim",
             json={
                 "T": 30,
                 "attack_start": 10,
@@ -364,7 +364,7 @@ class TestMultiSensorSimEndpoint:
 
     def test_invalid_attack_bounds(self, client: TestClient) -> None:
         resp = client.post(
-            "/gnss/multi-sensor-sim",
+            "/api/v1/gnss/multi-sensor-sim",
             json={
                 "T": 100,
                 "attack_start": 80,
@@ -377,7 +377,7 @@ class TestMultiSensorSimEndpoint:
 
     def test_n_sat_too_small(self, client: TestClient) -> None:
         resp = client.post(
-            "/gnss/multi-sensor-sim",
+            "/api/v1/gnss/multi-sensor-sim",
             json={
                 "T": 30,
                 "n_sat": 3,  # below FastAPI ge=4 → 422

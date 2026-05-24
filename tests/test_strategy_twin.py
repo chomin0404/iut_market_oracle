@@ -473,17 +473,17 @@ class TestStrategyAPI:
         }
 
     def test_run_returns_200(self, client: TestClient) -> None:
-        resp = client.post("/strategy/run", json=self._payload())
+        resp = client.post("/api/v1/strategy/run", json=self._payload())
         assert resp.status_code == 200
 
     def test_response_has_verdict(self, client: TestClient) -> None:
-        resp = client.post("/strategy/run", json=self._payload())
+        resp = client.post("/api/v1/strategy/run", json=self._payload())
         data = resp.json()
         assert "verdict" in data
         assert isinstance(data["verdict"], str)
 
     def test_response_has_sotp(self, client: TestClient) -> None:
-        resp = client.post("/strategy/run", json=self._payload())
+        resp = client.post("/api/v1/strategy/run", json=self._payload())
         data = resp.json()
         assert "sotp_segments" in data
         assert len(data["sotp_segments"]) == 1
@@ -491,5 +491,5 @@ class TestStrategyAPI:
     def test_empty_units_returns_422(self, client: TestClient) -> None:
         payload = self._payload()
         payload["business_units"] = []
-        resp = client.post("/strategy/run", json=payload)
+        resp = client.post("/api/v1/strategy/run", json=payload)
         assert resp.status_code == 422

@@ -779,7 +779,7 @@ def client(tmp_path: Path, monkeypatch):
 
 class TestForgeApiEndpoints:
     def test_forge_run_returns_200(self, client) -> None:
-        resp = client.post("/forge/run/test_model")
+        resp = client.post("/api/v1/forge/run/test_model")
         assert resp.status_code == 200
         data = resp.json()
         assert data["model_id"] == "test_model"
@@ -787,32 +787,32 @@ class TestForgeApiEndpoints:
         assert "skeleton_code_path" in data
 
     def test_forge_run_missing_model_returns_404(self, client) -> None:
-        resp = client.post("/forge/run/ghost_model")
+        resp = client.post("/api/v1/forge/run/ghost_model")
         assert resp.status_code == 404
 
     def test_forge_verify_returns_200(self, client) -> None:
-        resp = client.post("/forge/verify/test_model")
+        resp = client.post("/api/v1/forge/verify/test_model")
         assert resp.status_code == 200
         data = resp.json()
         assert "overall" in data
         assert "checks" in data
 
     def test_forge_verify_missing_returns_404(self, client) -> None:
-        resp = client.post("/forge/verify/ghost_model")
+        resp = client.post("/api/v1/forge/verify/ghost_model")
         assert resp.status_code == 404
 
     def test_forge_trace_returns_list(self, client) -> None:
         # Run first to populate trace
-        client.post("/forge/run/test_model")
-        resp = client.get("/forge/trace/test_model")
+        client.post("/api/v1/forge/run/test_model")
+        resp = client.get("/api/v1/forge/trace/test_model")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
         assert len(data) >= 4
 
     def test_forge_graph_returns_nodes_edges(self, client) -> None:
-        client.post("/forge/run/test_model")
-        resp = client.get("/forge/graph")
+        client.post("/api/v1/forge/run/test_model")
+        resp = client.get("/api/v1/forge/graph")
         assert resp.status_code == 200
         data = resp.json()
         assert "nodes" in data
@@ -823,24 +823,24 @@ class TestForgeApiEndpoints:
 
         empty_log = tmp_path / "empty_audit.jsonl"
         monkeypatch.setattr(forge_router_module, "_AUDIT_LOG", empty_log)
-        resp = client.get("/forge/audit")
+        resp = client.get("/api/v1/forge/audit")
         assert resp.status_code == 200
         assert resp.json() == []
 
     def test_forge_audit_returns_entries_after_run(self, client) -> None:
-        client.post("/forge/run/test_model")
-        resp = client.get("/forge/audit")
+        client.post("/api/v1/forge/run/test_model")
+        resp = client.get("/api/v1/forge/audit")
         assert resp.status_code == 200
         entries = resp.json()
         assert len(entries) >= 1
         assert entries[0]["model_id"] == "test_model"
 
     def test_forge_run_all_returns_200(self, client) -> None:
-        resp = client.post("/forge/run/all")
+        resp = client.post("/api/v1/forge/run/all")
         assert resp.status_code == 200
 
     def test_forge_verify_all_returns_200(self, client) -> None:
-        resp = client.post("/forge/verify/all")
+        resp = client.post("/api/v1/forge/verify/all")
         assert resp.status_code == 200
 
 

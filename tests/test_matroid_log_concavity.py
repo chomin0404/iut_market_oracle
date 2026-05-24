@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import math
 
+import matplotlib
+
+matplotlib.use("Agg")  # headless backend — must precede any pyplot import
+
 import numpy as np
 import pytest
 
@@ -202,3 +206,82 @@ class TestMatroidLogConcavityResultSchema:
                 log_concavity_checks=[True],  # wrong: should be length 2
                 is_log_concave=True,
             )
+
+
+# ---------------------------------------------------------------------------
+# plot_log_concavity
+# ---------------------------------------------------------------------------
+
+
+class TestPlotLogConcavity:
+    def test_returns_figure(self) -> None:
+        import matplotlib.figure
+
+        from matroid.log_concavity import plot_log_concavity
+
+        result = compute_log_concave_weights(6)
+        fig = plot_log_concavity(result)
+        assert isinstance(fig, matplotlib.figure.Figure)
+
+    def test_figure_has_two_axes(self) -> None:
+        from matroid.log_concavity import plot_log_concavity
+
+        result = compute_log_concave_weights(6)
+        fig = plot_log_concavity(result)
+        assert len(fig.axes) == 2
+
+    def test_bar_count_equals_n_plus_one(self) -> None:
+        from matroid.log_concavity import plot_log_concavity
+
+        n = 5
+        result = compute_log_concave_weights(n)
+        fig = plot_log_concavity(result)
+        assert len(fig.axes[0].patches) == n + 1
+
+    def test_log_probability_line_present(self) -> None:
+        from matroid.log_concavity import plot_log_concavity
+
+        result = compute_log_concave_weights(6)
+        fig = plot_log_concavity(result)
+        assert len(fig.axes[1].get_lines()) >= 1
+
+    def test_violation_scatter_branch(self) -> None:
+        """Cover the ``if violation_k:`` branch via a result with False checks."""
+        import matplotlib.figure
+
+        from matroid.log_concavity import plot_log_concavity
+        from schemas import MatroidLogConcavityResult
+
+        # n=2: log_concavity_checks has length 1; set it False to trigger scatter
+        result = MatroidLogConcavityResult(
+            n_assets=2,
+            rank_weight=0.8,
+            corank_weight=1.2,
+            subset_sizes=[0, 1, 2],
+            probability_mass=[0.25, 0.50, 0.25],
+            log_probability=[math.log(0.25), math.log(0.50), math.log(0.25)],
+            log_concavity_checks=[False],
+            is_log_concave=False,
+        )
+        fig = plot_log_concavity(result)
+        assert isinstance(fig, matplotlib.figure.Figure)
+
+    def test_no_violation_no_scatter(self) -> None:
+        """Normal log-concave result: no scatter points on the mass axis."""
+        from matroid.log_concavity import plot_log_concavity
+
+        result = compute_log_concave_weights(8)
+        fig = plot_log_concavity(result)
+        ax_mass = fig.axes[0]
+        # Scatter collections should be absent (no violations)
+        assert len(ax_mass.collections) == 0
+
+    def test_title_contains_n_alpha_beta(self) -> None:
+        from matroid.log_concavity import plot_log_concavity
+
+        result = compute_log_concave_weights(4, rank_weight=0.7, corank_weight=1.3)
+        fig = plot_log_concavity(result)
+        title = fig.axes[0].get_title()
+        assert "4" in title
+        assert "0.7" in title
+        assert "1.3" in title

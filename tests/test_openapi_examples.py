@@ -84,44 +84,44 @@ class TestOperationExamples:
     # POST /ideas/parse -------------------------------------------------------
 
     def test_ideas_parse_has_gps_spoofing_example(self, openapi: dict) -> None:
-        examples = _op_examples(openapi, "/ideas/parse")
+        examples = _op_examples(openapi, "/api/v1/ideas/parse")
         assert "gps_spoofing" in examples
 
     def test_ideas_parse_example_value_matches_constant(self, openapi: dict) -> None:
-        value = _op_examples(openapi, "/ideas/parse")["gps_spoofing"]["value"]
+        value = _op_examples(openapi, "/api/v1/ideas/parse")["gps_spoofing"]["value"]
         assert value == EXAMPLE_IDEA_INPUT
 
     def test_ideas_parse_example_title(self, openapi: dict) -> None:
-        value = _op_examples(openapi, "/ideas/parse")["gps_spoofing"]["value"]
+        value = _op_examples(openapi, "/api/v1/ideas/parse")["gps_spoofing"]["value"]
         assert value["title"] == "GPS spoofing detection and defense"
 
     def test_ideas_parse_example_goal_type(self, openapi: dict) -> None:
-        value = _op_examples(openapi, "/ideas/parse")["gps_spoofing"]["value"]
+        value = _op_examples(openapi, "/api/v1/ideas/parse")["gps_spoofing"]["value"]
         assert value["goal_type"] == "anomaly_detection"
 
     def test_ideas_parse_example_time_horizon(self, openapi: dict) -> None:
-        value = _op_examples(openapi, "/ideas/parse")["gps_spoofing"]["value"]
+        value = _op_examples(openapi, "/api/v1/ideas/parse")["gps_spoofing"]["value"]
         assert value["time_horizon"] == "sequential"
 
     # POST /model/recommend ---------------------------------------------------
 
     def test_model_recommend_has_gps_spoofing_example(self, openapi: dict) -> None:
-        examples = _op_examples(openapi, "/model/recommend")
+        examples = _op_examples(openapi, "/api/v1/model/recommend")
         assert "gps_spoofing" in examples
 
     def test_model_recommend_example_has_signals(self, openapi: dict) -> None:
-        value = _op_examples(openapi, "/model/recommend")["gps_spoofing"]["value"]
+        value = _op_examples(openapi, "/api/v1/model/recommend")["gps_spoofing"]["value"]
         assert isinstance(value.get("signals"), list)
         assert len(value["signals"]) > 0
 
     # POST /model/generate ----------------------------------------------------
 
     def test_model_generate_has_gps_spoofing_example(self, openapi: dict) -> None:
-        examples = _op_examples(openapi, "/model/generate")
+        examples = _op_examples(openapi, "/api/v1/model/generate")
         assert "gps_spoofing" in examples
 
     def test_model_generate_example_has_domain(self, openapi: dict) -> None:
-        value = _op_examples(openapi, "/model/generate")["gps_spoofing"]["value"]
+        value = _op_examples(openapi, "/api/v1/model/generate")["gps_spoofing"]["value"]
         assert value.get("domain") == "navigation_security"
 
 

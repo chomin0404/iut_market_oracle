@@ -20,7 +20,7 @@ _src_dir = str(_Path(__file__).parent.parent)
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +29,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from api.dependencies import make_api_key_dep
+from api.middleware import RateLimitMiddleware
 from api.routers import (
     bayesian,
     entropy,
@@ -149,6 +151,12 @@ _TAGS_METADATA = [
 # ---------------------------------------------------------------------------
 
 _START_TIME = time.time()
+_RATE_LIMIT_RPM = int(os.environ.get("RATE_LIMIT_RPM", "0"))
+
+# API key dependency shared by heavy-compute routers (risk, gnss, valuation).
+# Dev mode: ORACLE_API_KEY unset → all requests accepted.
+# Production: set ORACLE_API_KEY to enforce the X-API-Key header.
+_require_oracle_key = make_api_key_dep("X-API-Key", "ORACLE_API_KEY")
 
 app = FastAPI(
     title="IUT Market Oracle API",
@@ -192,27 +200,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RateLimitMiddleware, requests_per_minute=_RATE_LIMIT_RPM)
 
 # ---------------------------------------------------------------------------
-# Routers
+# Routers — all domain routes live under /api/v1/
 # ---------------------------------------------------------------------------
 
-app.include_router(valuation.router, prefix="/valuation", tags=["valuation"])
-app.include_router(bayesian.router, prefix="/bayesian", tags=["bayesian"])
-app.include_router(graph.router, prefix="/graph", tags=["graph"])
-app.include_router(experiments.router, prefix="/experiments", tags=["experiments"])
-app.include_router(twin.router, prefix="/twin", tags=["twin"])
-app.include_router(exit_.router, prefix="/exit", tags=["exit"])
-app.include_router(entropy.router, prefix="/entropy", tags=["entropy"])
-app.include_router(report.router, prefix="/report", tags=["report"])
-app.include_router(gnss.router, prefix="/gnss", tags=["gnss"])
-app.include_router(matroid.router, prefix="/matroid", tags=["matroid"])
-app.include_router(model.router, prefix="/model", tags=["model"])
-app.include_router(ideas.router, prefix="/ideas", tags=["ideas"])
-app.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
-app.include_router(forge.router, prefix="/forge", tags=["forge"])
-app.include_router(yield_twin.router, prefix="/yield-twin", tags=["yield-twin"])
-app.include_router(risk.router, prefix="/risk", tags=["risk"])
+from fastapi import APIRouter as _APIRouter  # noqa: E402
+
+_v1 = _APIRouter(prefix="/api/v1")
+_v1.include_router(bayesian.router, prefix="/bayesian", tags=["bayesian"])
+_v1.include_router(graph.router, prefix="/graph", tags=["graph"])
+_v1.include_router(experiments.router, prefix="/experiments", tags=["experiments"])
+_v1.include_router(twin.router, prefix="/twin", tags=["twin"])
+_v1.include_router(exit_.router, prefix="/exit", tags=["exit"])
+_v1.include_router(entropy.router, prefix="/entropy", tags=["entropy"])
+_v1.include_router(report.router, prefix="/report", tags=["report"])
+_v1.include_router(
+    gnss.router,
+    prefix="/gnss",
+    tags=["gnss"],
+    dependencies=[Depends(_require_oracle_key)],
+)
+_v1.include_router(matroid.router, prefix="/matroid", tags=["matroid"])
+_v1.include_router(model.router, prefix="/model", tags=["model"])
+_v1.include_router(ideas.router, prefix="/ideas", tags=["ideas"])
+_v1.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
+_v1.include_router(forge.router, prefix="/forge", tags=["forge"])
+_v1.include_router(yield_twin.router, prefix="/yield-twin", tags=["yield-twin"])
+_v1.include_router(
+    risk.router,
+    prefix="/risk",
+    tags=["risk"],
+    dependencies=[Depends(_require_oracle_key)],
+)
+_v1.include_router(
+    valuation.router,
+    prefix="/valuation",
+    tags=["valuation"],
+    dependencies=[Depends(_require_oracle_key)],
+)
+app.include_router(_v1)
 
 # ---------------------------------------------------------------------------
 # System endpoints
@@ -222,6 +250,7 @@ app.include_router(risk.router, prefix="/risk", tags=["risk"])
 class _APIInfo(BaseModel):
     title: str
     version: str
+    api_prefix: str
     docs: str
     redoc: str
     health: str
@@ -232,6 +261,7 @@ class _HealthResponse(BaseModel):
     status: str
     version: str
     uptime_seconds: float
+    features: dict[str, bool | int]
 
 
 @app.get("/", response_model=_APIInfo, tags=["system"], include_in_schema=True)
@@ -240,6 +270,7 @@ def root() -> _APIInfo:
     return _APIInfo(
         title=app.title,
         version=app.version,
+        api_prefix="/api/v1",
         docs="/docs",
         redoc="/redoc",
         health="/health",
@@ -249,15 +280,25 @@ def root() -> _APIInfo:
 
 @app.get("/health", response_model=_HealthResponse, tags=["system"])
 def health() -> _HealthResponse:
-    """Health check — returns status, version, and uptime.
+    """Health check — returns status, version, uptime, and feature availability flags.
 
     Returns HTTP 200 when the service is ready to accept requests.
     Use this endpoint for liveness/readiness probes in container orchestration.
+
+    Feature flags:
+    - **ideas_available**: true when ANTHROPIC_API_KEY is configured.
+    - **cors_restricted**: true when CORS is limited to explicit origins (not wildcard).
     """
     return _HealthResponse(
         status="ok",
         version=app.version,
         uptime_seconds=round(time.time() - _START_TIME, 2),
+        features={
+            "ideas_available": bool(os.environ.get("ANTHROPIC_API_KEY")),
+            "cors_restricted": _raw_origins != "*",
+            "api_key_required": bool(os.environ.get("ORACLE_API_KEY")),
+            "rate_limit_rpm": _RATE_LIMIT_RPM,
+        },
     )
 
 
@@ -306,7 +347,7 @@ async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSON
         content=_ErrorResponse(
             status_code=500,
             error="internal_server_error",
-            detail=str(exc),
+            detail="An unexpected error occurred.",
         ).model_dump(),
     )
 

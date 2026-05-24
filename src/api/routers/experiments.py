@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, HTTPException
 
 from api.schemas.experiments import ExperimentCreateRequest, ExperimentUpdateRequest
@@ -14,6 +16,8 @@ from experiments.tracker import (
 from schemas import ExperimentMeta
 
 router = APIRouter()
+
+_EXPERIMENTS_ROOT = os.environ.get("EXPERIMENTS_ROOT", "experiments")
 
 
 # ---------------------------------------------------------------------------
@@ -33,34 +37,32 @@ def create(req: ExperimentCreateRequest) -> ExperimentMeta:
             random_seed=req.random_seed,
             tags=req.tags,
             summary=req.summary,
-            experiments_root=req.experiments_root,
+            experiments_root=_EXPERIMENTS_ROOT,
         )
     except (ValueError, OverflowError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("", response_model=list[ExperimentMeta])
-def list_all(experiments_root: str = "experiments") -> list[ExperimentMeta]:
+def list_all() -> list[ExperimentMeta]:
     """List all experiments sorted by ID."""
-    return list_experiments(experiments_root)
+    return list_experiments(_EXPERIMENTS_ROOT)
 
 
 @router.get("/{exp_id}", response_model=ExperimentMeta)
-def get(exp_id: str, experiments_root: str = "experiments") -> ExperimentMeta:
+def get(exp_id: str) -> ExperimentMeta:
     """Load a single experiment by ID."""
     try:
-        return load_experiment(exp_id, experiments_root)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        return load_experiment(exp_id, _EXPERIMENTS_ROOT)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Experiment '{exp_id}' not found.")
 
 
 @router.patch("/{exp_id}", response_model=ExperimentMeta)
 def update(exp_id: str, req: ExperimentUpdateRequest) -> ExperimentMeta:
     """Update writable fields of an existing experiment."""
-    fields = {
-        k: v for k, v in req.model_dump(exclude={"experiments_root"}).items() if v is not None
-    }
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
     try:
-        return update_experiment(exp_id, experiments_root=req.experiments_root, **fields)
+        return update_experiment(exp_id, experiments_root=_EXPERIMENTS_ROOT, **fields)
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))

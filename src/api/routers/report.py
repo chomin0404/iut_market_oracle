@@ -25,7 +25,9 @@ def run_report_endpoint(req: ReportRequest) -> ReportResponse:
             experiments_root=req.experiments_root,
         )
         return ReportResponse(artifacts={k: str(v) for k, v in artifacts.items()})
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(  # noqa: B904
+            status_code=404, detail="Scenario directory or required file not found."
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

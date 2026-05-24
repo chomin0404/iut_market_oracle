@@ -188,7 +188,7 @@ class TestRecommendEndpoint:
         ):
             MockClient.return_value.messages.create.return_value = mock_resp
             resp = client.post(
-                "/model/recommend",
+                "/api/v1/model/recommend",
                 json={"description": "A system with latent state and online measurements"},
             )
 
@@ -208,7 +208,7 @@ class TestRecommendEndpoint:
         ):
             MockClient.return_value.messages.create.return_value = mock_resp
             resp = client.post(
-                "/model/recommend",
+                "/api/v1/model/recommend",
                 json={
                     "description": "Sequential sensor fusion",
                     "signals": ["latent dynamics exist", "online observations are available"],
@@ -220,11 +220,11 @@ class TestRecommendEndpoint:
     def test_recommend_missing_api_key_returns_503(self, client, monkeypatch) -> None:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         resp = client.post(
-            "/model/recommend",
+            "/api/v1/model/recommend",
             json={"description": "Any problem"},
         )
         assert resp.status_code == 503
 
     def test_recommend_empty_description_returns_422(self, client) -> None:
-        resp = client.post("/model/recommend", json={"description": ""})
+        resp = client.post("/api/v1/model/recommend", json={"description": ""})
         assert resp.status_code == 422
