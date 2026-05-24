@@ -1,0 +1,8 @@
+# Normalize all text files to LF on commit (CRLF only on Windows checkout)
+* text=auto eol=lf
+
+# Explicitly mark binary files
+*.png binary
+*.jpg binary
+*.pdf binary
+*.pyc binary
