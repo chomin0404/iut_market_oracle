@@ -9,17 +9,11 @@ Interactive docs:
 
 from __future__ import annotations
 
+import logging
 import os
-import sys
 import time
-from pathlib import Path as _Path
 
-# Add src/ to sys.path before any intra-project imports so that
-# "from schemas import ..." resolves to src/schemas.py, not the root-level one.
-_src_dir = str(_Path(__file__).parent.parent)
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
-
+from fastapi import APIRouter as _APIRouter
 from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -54,6 +48,8 @@ from modeling_api.examples import (
     EXAMPLE_MODEL_SPEC,
     EXAMPLE_PARSED_IDEA_RESPONSE,
 )
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # OpenAPI tag metadata
@@ -153,6 +149,12 @@ _TAGS_METADATA = [
 _START_TIME = time.time()
 _RATE_LIMIT_RPM = int(os.environ.get("RATE_LIMIT_RPM", "0"))
 
+if not os.environ.get("ORACLE_API_KEY"):
+    _log.warning(
+        "ORACLE_API_KEY is not set — protected endpoints (risk, gnss, valuation) "
+        "are open to all requests. Set this variable before deploying to production."
+    )
+
 # API key dependency shared by heavy-compute routers (risk, gnss, valuation).
 # Dev mode: ORACLE_API_KEY unset → all requests accepted.
 # Production: set ORACLE_API_KEY to enforce the X-API-Key header.
@@ -205,8 +207,6 @@ app.add_middleware(RateLimitMiddleware, requests_per_minute=_RATE_LIMIT_RPM)
 # ---------------------------------------------------------------------------
 # Routers — all domain routes live under /api/v1/
 # ---------------------------------------------------------------------------
-
-from fastapi import APIRouter as _APIRouter  # noqa: E402
 
 _v1 = _APIRouter(prefix="/api/v1")
 _v1.include_router(bayesian.router, prefix="/bayesian", tags=["bayesian"])

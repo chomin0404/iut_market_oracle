@@ -40,8 +40,6 @@ known-first-party = [
 # sys.path manipulation must precede matplotlib.use("Agg") and all other imports
 "src/report.py" = ["E402"]
 # sys.path manipulation must precede all intra-project imports
-"src/api/app.py" = ["E402"]
-# sys.path manipulation must precede all intra-project imports
 "src/gnss/__main__.py" = ["E402"]
 
 [tool.pyright]

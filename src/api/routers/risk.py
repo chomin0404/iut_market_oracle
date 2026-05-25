@@ -7,6 +7,7 @@ Routes (mounted at /risk):
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import uuid
 from collections import OrderedDict
@@ -210,7 +211,7 @@ def _run_single_sweep(
     summary="Run copula-based Monte Carlo simulation",
     operation_id="risk_simulate",
 )
-def simulate(
+async def simulate(
     body: Annotated[
         SimulateRequest,
         Body(
@@ -246,32 +247,34 @@ def simulate(
 
     Supported copulas: gaussian, student_t, clayton, independent.
     """
-    try:
-        result = _simulator.simulate(
-            n_vars=body.n_vars,
+    def _run() -> SimulateResponse:
+        try:
+            result = _simulator.simulate(
+                n_vars=body.n_vars,
+                n_samples=body.n_samples,
+                distributions=[d.model_dump() for d in body.distributions],
+                copula=_build_copula_dict(body.copula),
+                seed=body.seed,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        sim_id = str(uuid.uuid4())
+        _cache_put(sim_id, result.samples.T)
+
+        col = result.samples[0]
+        return SimulateResponse(
+            simulation_id=sim_id,
             n_samples=body.n_samples,
-            distributions=[d.model_dump() for d in body.distributions],
-            copula=_build_copula_dict(body.copula),
-            seed=body.seed,
+            summary=VariableSummary(
+                mean=float(col.mean()),
+                std=float(col.std()),
+                var_95=compute_var(col, DEFAULT_ALPHA),
+                es_95=compute_es(col, DEFAULT_ALPHA),
+            ),
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Cache as (n_samples, n_vars) for column access in /boundary
-    sim_id = str(uuid.uuid4())
-    _cache_put(sim_id, result.samples.T)
-
-    col = result.samples[0]  # variable index 0, shape (n_samples,)
-    return SimulateResponse(
-        simulation_id=sim_id,
-        n_samples=body.n_samples,
-        summary=VariableSummary(
-            mean=float(col.mean()),
-            std=float(col.std()),
-            var_95=compute_var(col, DEFAULT_ALPHA),
-            es_95=compute_es(col, DEFAULT_ALPHA),
-        ),
-    )
+    return await asyncio.to_thread(_run)
 
 
 @router.post(
@@ -281,7 +284,7 @@ def simulate(
     summary="Compute exceedance curve and confidence band",
     operation_id="risk_boundary",
 )
-def risk_boundary(
+async def risk_boundary(
     body: Annotated[
         BoundaryRequest,
         Body(
@@ -317,20 +320,22 @@ def risk_boundary(
     """
     col = _resolve_samples(body.simulation_id, body.samples, body.target_variable_index)
 
-    exc_probs = compute_exceedance_curve(col, body.thresholds)
-    band = compute_confidence_band(
-        col, body.thresholds, bootstrap_n=body.bootstrap_n, seed=body.bootstrap_seed
-    )
-    var = compute_var(col, body.confidence_level)
-    es = compute_es(col, body.confidence_level)
+    def _run() -> BoundaryResponse:
+        exc_probs = compute_exceedance_curve(col, body.thresholds)
+        band = compute_confidence_band(
+            col, body.thresholds, bootstrap_n=body.bootstrap_n, seed=body.bootstrap_seed
+        )
+        var = compute_var(col, body.confidence_level)
+        es = compute_es(col, body.confidence_level)
+        return BoundaryResponse(
+            thresholds=body.thresholds,
+            exceedance_probs=exc_probs,
+            confidence_band=ConfidenceBand(**band),
+            var_95=var,
+            es_95=es,
+        )
 
-    return BoundaryResponse(
-        thresholds=body.thresholds,
-        exceedance_probs=exc_probs,
-        confidence_band=ConfidenceBand(**band),
-        var_95=var,
-        es_95=es,
-    )
+    return await asyncio.to_thread(_run)
 
 
 @router.post(
@@ -340,7 +345,7 @@ def risk_boundary(
     summary="Tail risk (VaR and ES) at multiple confidence levels",
     operation_id="risk_tail",
 )
-def risk_tail(
+async def risk_tail(
     body: Annotated[
         TailRequest,
         Body(
@@ -374,11 +379,14 @@ def risk_tail(
     """
     col = _resolve_samples(body.simulation_id, body.samples, body.target_variable_index)
 
-    stats = [
-        TailStatEntry(alpha=a, var=compute_var(col, a), es=compute_es(col, a))
-        for a in sorted(body.alphas)
-    ]
-    return TailResponse(tail_stats=stats, n_samples=len(col))
+    def _run() -> TailResponse:
+        stats = [
+            TailStatEntry(alpha=a, var=compute_var(col, a), es=compute_es(col, a))
+            for a in sorted(body.alphas)
+        ]
+        return TailResponse(tail_stats=stats, n_samples=len(col))
+
+    return await asyncio.to_thread(_run)
 
 
 @router.post(
@@ -388,7 +396,7 @@ def risk_tail(
     summary="GNSS attack scenario tail risk analysis (VaR/ES per variable)",
     operation_id="risk_gnss_scenario",
 )
-def risk_gnss_scenario(
+async def risk_gnss_scenario(
     body: Annotated[
         GnssScenarioRequest,
         Body(
@@ -473,36 +481,38 @@ def risk_gnss_scenario(
     Typical copula choice for spoofing scenarios: ``student_t`` with low df (heavy tails)
     and high off-diagonal correlation to capture simultaneous signal degradation.
     """
-    try:
-        result = _simulator.simulate(
-            n_vars=len(body.variables),
+    def _run() -> GnssScenarioResponse:
+        try:
+            result = _simulator.simulate(
+                n_vars=len(body.variables),
+                n_samples=body.n_samples,
+                distributions=[v.distribution.model_dump() for v in body.variables],
+                copula=_build_copula_dict(body.copula),
+                seed=body.seed,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        sorted_alphas = sorted(body.alphas)
+        per_variable = [
+            GnssVariableResult(
+                name=var_spec.name,
+                mean=float(col.mean()),
+                std=float(col.std()),
+                tail_stats=[
+                    TailStatEntry(alpha=a, var=compute_var(col, a), es=compute_es(col, a))
+                    for a in sorted_alphas
+                ],
+            )
+            for var_spec, col in zip(body.variables, result.samples)
+        ]
+        return GnssScenarioResponse(
+            scenario_name=body.scenario_name,
             n_samples=body.n_samples,
-            distributions=[v.distribution.model_dump() for v in body.variables],
-            copula=_build_copula_dict(body.copula),
-            seed=body.seed,
+            per_variable=per_variable,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    sorted_alphas = sorted(body.alphas)
-    per_variable = [
-        GnssVariableResult(
-            name=var_spec.name,
-            mean=float(col.mean()),
-            std=float(col.std()),
-            tail_stats=[
-                TailStatEntry(alpha=a, var=compute_var(col, a), es=compute_es(col, a))
-                for a in sorted_alphas
-            ],
-        )
-        for var_spec, col in zip(body.variables, result.samples)
-    ]
-
-    return GnssScenarioResponse(
-        scenario_name=body.scenario_name,
-        n_samples=body.n_samples,
-        per_variable=per_variable,
-    )
+    return await asyncio.to_thread(_run)
 
 
 @router.post(
@@ -512,7 +522,7 @@ def risk_gnss_scenario(
     summary="Parameter sensitivity analysis for VaR/ES",
     operation_id="risk_sensitivity",
 )
-def risk_sensitivity(
+async def risk_sensitivity(
     body: Annotated[
         SensitivityRequest,
         Body(
@@ -591,25 +601,28 @@ def risk_sensitivity(
     sweep = body.sweep_parameter
     idx = body.target_variable_index
 
-    _one_step = partial(
-        _run_single_sweep, body.base_config, sweep, target_idx=idx, fn=fn, alpha=alpha
-    )
-    n_workers = min(len(sweep.values), _MAX_SENSITIVITY_WORKERS)
-    try:
-        with ThreadPoolExecutor(max_workers=n_workers) as executor:
-            risk_values: list[float] = list(executor.map(_one_step, sweep.values))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    def _run() -> SensitivityResponse:
+        _one_step = partial(
+            _run_single_sweep, body.base_config, sweep, target_idx=idx, fn=fn, alpha=alpha
+        )
+        n_workers = min(len(sweep.values), _MAX_SENSITIVITY_WORKERS)
+        try:
+            with ThreadPoolExecutor(max_workers=n_workers) as executor:
+                risk_values: list[float] = list(executor.map(_one_step, sweep.values))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    max_val = max(risk_values)
-    min_val = min(risk_values)
-    abs_max = abs(max_val)
-    sensitivity_index = (max_val - min_val) / abs_max if abs_max > 0 else 0.0
-    most_sensitive_at = sweep.values[risk_values.index(max_val)]
+        max_val = max(risk_values)
+        min_val = min(risk_values)
+        abs_max = abs(max_val)
+        sensitivity_index = (max_val - min_val) / abs_max if abs_max > 0 else 0.0
+        most_sensitive_at = sweep.values[risk_values.index(max_val)]
 
-    return SensitivityResponse(
-        parameter_values=list(sweep.values),
-        risk_values=risk_values,
-        sensitivity_index=sensitivity_index,
-        most_sensitive_at=most_sensitive_at,
-    )
+        return SensitivityResponse(
+            parameter_values=list(sweep.values),
+            risk_values=risk_values,
+            sensitivity_index=sensitivity_index,
+            most_sensitive_at=most_sensitive_at,
+        )
+
+    return await asyncio.to_thread(_run)

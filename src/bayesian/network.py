@@ -391,7 +391,8 @@ class BayesianNetwork:
         factors: list[_Factor] = []
         for nid, spec in self._specs.items():
             variables = self._parents[nid] + [nid]
-            assert spec.cpt is not None  # validated above
+            if spec.cpt is None:  # pragma: no cover — guarded by validation loop above
+                raise RuntimeError(f"CPT not set for node '{nid}' after validation pass")
             factors.append(_Factor(variables=variables, values=spec.cpt.copy()))
 
         # Step 2: Restrict factors to evidence
