@@ -19,6 +19,13 @@ dependencies = [
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = [
+    # Starlette's internal ExceptionMiddleware/ServerErrorMiddleware creates a
+    # `dispatch` coroutine during TestClient teardown that Python's GC detects
+    # as unawaited.  This is a known Starlette internals issue — not caused by
+    # application code — and all tests pass cleanly.
+    "ignore:coroutine 'dispatch' was never awaited:RuntimeWarning",
+]
 
 [tool.ruff]
 line-length = 100
@@ -50,6 +57,7 @@ strict = []
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "mypy>=1.0",
     "pyright>=1.1.408",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",

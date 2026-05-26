@@ -50,15 +50,15 @@ class PriorSpec(BaseModel):
     """Specification of a prior distribution."""
 
     distribution: str = Field(..., description="e.g. 'beta', 'normal', 'uniform'")
-    params: dict[str, float] = Field(..., description="Distribution parameters")
+    params: dict[str, int | float] = Field(..., description="Distribution parameters")
     description: str = ""
 
     @field_validator("params")
     @classmethod
-    def non_empty_params(cls, v: dict[str, float]) -> dict[str, float]:
+    def non_empty_params(cls, v: dict[str, int | float]) -> dict[str, float]:
         if not v:
             raise ValueError("params must not be empty")
-        return v
+        return {k: float(val) for k, val in v.items()}
 
 
 class PosteriorSummary(BaseModel):

@@ -357,6 +357,12 @@ class BayesianNetwork:
     def posterior(self, query: str) -> dict[str, float]:
         """Compute P(query | current evidence) via Variable Elimination.
 
+        .. warning::
+            This method reads ``self._evidence`` which is **mutable shared state**.
+            Call :meth:`observe` / :meth:`reset_evidence` to manage evidence before
+            calling this method.  For concurrent or multi-call inference, prefer
+            :meth:`update` which saves and restores evidence atomically.
+
         Parameters
         ----------
         query:
@@ -633,3 +639,47 @@ def _validate_prob_row(arr: np.ndarray, node_id: str, context: str) -> None:
         raise ValueError(
             f"Probabilities for '{node_id}' ({context}) must sum to 1.0, got {total:.8f}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Convenience inference function
+# ---------------------------------------------------------------------------
+
+
+def infer(
+    network: BayesianNetwork,
+    query: str,
+    evidence: dict[str, str] | None = None,
+) -> dict[str, float]:
+    """Compute P(query | evidence) via Variable Elimination.
+
+    Parameters
+    ----------
+    network:
+        A fully specified :class:`BayesianNetwork` (all CPTs assigned).
+    query:
+        Node ID whose posterior distribution is requested.
+    evidence:
+        Observed states, e.g. ``{"economy": "expansion"}``.
+        ``None`` (or omit) queries the prior marginal P(query).
+
+    Returns
+    -------
+    dict[str, float]
+        Mapping state -> posterior probability.  Values sum to 1.0.
+
+    Example
+    -------
+    >>> net = BayesianNetwork()
+    >>> net.add_node("economy", states=["expansion", "recession"])
+    >>> net.add_node("regime",  states=["bull", "bear", "neutral"])
+    >>> net.add_edge("economy", "regime")
+    >>> net.set_prior("economy", [0.70, 0.30])
+    >>> net.set_cpt("regime", {
+    ...     ("expansion",): [0.60, 0.10, 0.30],
+    ...     ("recession",): [0.20, 0.60, 0.20],
+    ... })
+    >>> infer(net, "regime", {"economy": "expansion"})
+    {'bull': 0.6, 'bear': 0.1, 'neutral': 0.3}
+    """
+    return network.update(evidence or {}, [query])[query]
