@@ -18,7 +18,7 @@ dependencies = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-v --tb=short --cov=src --cov-report=term-missing"
 filterwarnings = [
     # Starlette's internal ExceptionMiddleware/ServerErrorMiddleware creates a
     # `dispatch` coroutine during TestClient teardown that Python's GC detects

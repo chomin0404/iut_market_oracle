@@ -361,7 +361,9 @@ def test_named_infer_summer_holiday_shifts_demand_high() -> None:
 
 def test_named_infer_evidence_echoed() -> None:
     evidence = {"season": "summer"}
-    body = client.post(_WATER_INFER_URL, json={"query": "demand_level", "evidence": evidence}).json()
+    body = client.post(
+        _WATER_INFER_URL, json={"query": "demand_level", "evidence": evidence}
+    ).json()
     assert body["evidence"] == evidence
     assert body["query"] == "demand_level"
 
