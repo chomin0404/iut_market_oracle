@@ -25,6 +25,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from gnss.cn0_detector import CN0AnomalyResult
+
 # Shared signal constants (own source of truth, independent of simulation layer)
 from gnss.constants import (
     _DIRICHLET_ALPHA,
@@ -92,6 +94,7 @@ _FUSE_OSNMA_SPOOF: float = 0.40
 _FUSE_STRUCT_SPOOF: float = 0.05
 _FUSE_GMM_SPOOF_COMMON: float = 0.50
 _FUSE_PHASE_SPOOF: float = 0.10  # phase-transition alert weight in spoof score
+_FUSE_CN0_SPOOF: float = 0.20  # C/N0 anomaly (spread collapse / CUSUM / corr burst)
 
 _MP_NOISE_INFLATION: float = 2.0  # multipath noise amplitude [Hz]
 # 40× ensures E[P(detect)] ≈ 90% even for the worst eligible sat (el=24.6° → threshold≈2.2 Hz).
@@ -155,6 +158,7 @@ class EpochDiagnosis:
     auth: AuthenticationScore  # Pillar 1 — authentication
     integrity: IntegrityScore  # Pillar 2 — integrity
     structure: StructuralScore  # Pillar 3 — structure
+    cn0_anomaly: CN0AnomalyResult | None = None  # C/N0 anomaly result; None if unavailable
 
 
 # ---------------------------------------------------------------------------
@@ -310,14 +314,21 @@ class InterventionPillar:
         auth: AuthenticationScore,
         integrity: IntegrityScore,
         structure: StructuralScore,
+        cn0_anomaly: CN0AnomalyResult | None = None,
     ) -> tuple[np.ndarray, FaultEntropyResult]:
         """Compute final 4-class posterior and entropy alert.
+
+        C/N0 anomaly score contributes _FUSE_CN0_SPOOF * p_spoof_cn0 to the
+        spoofing signal when cn0_anomaly is available (non-None).
 
         Returns:
             (fp, entropy_result): fp is a (4,) normalized probability array.
         """
         p_nom, p_mp, p_hw, p_spoof = integrity.base_posterior
 
+        cn0_spoof_contrib = (
+            _FUSE_CN0_SPOOF * cn0_anomaly.p_spoof_cn0 if cn0_anomaly is not None else 0.0
+        )
         s_spoof = (
             p_spoof
             + _FUSE_SPOOF_FIEDLER
@@ -327,6 +338,7 @@ class InterventionPillar:
             + _FUSE_OSNMA_SPOOF * auth.p_spoofed
             + _FUSE_STRUCT_SPOOF * float(structure.structural.alert)
             + _FUSE_PHASE_SPOOF * float(structure.phase.phase_alert)
+            + cn0_spoof_contrib
         )
         s_mp = p_mp
         s_hw = p_hw
@@ -377,6 +389,7 @@ class ResilienceTwin:
         t: int = 0,
         ins_velocity: np.ndarray | None = None,
         osnma_auth: list[bool] | None = None,
+        cn0_anomaly: CN0AnomalyResult | None = None,
     ) -> EpochDiagnosis:
         """Process one epoch of Doppler residuals through the 4-pillar stack.
 
@@ -385,11 +398,12 @@ class ResilienceTwin:
             t:            Epoch index (informational only)
             ins_velocity: (3,) external INS velocity deviation [m/s], or None
             osnma_auth:   Per-satellite OSNMA authentication flags, or None
+            cn0_anomaly:  C/N0 anomaly result from CN0AnomalyDetector, or None
         """
         auth = self._auth.assess(osnma_auth)
         integrity = self._integrity.assess(doppler_dev, self._elevations, ins_velocity)
         structure = self._structure.update(doppler_dev)
-        fp, entropy_result = self._intervention.fuse(auth, integrity, structure)
+        fp, entropy_result = self._intervention.fuse(auth, integrity, structure, cn0_anomaly)
 
         idx = int(np.argmax(fp))
         return EpochDiagnosis(
@@ -401,6 +415,7 @@ class ResilienceTwin:
             auth=auth,
             integrity=integrity,
             structure=structure,
+            cn0_anomaly=cn0_anomaly,
         )
 
 

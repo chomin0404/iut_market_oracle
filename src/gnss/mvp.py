@@ -33,6 +33,7 @@ from gnss.action_engine import (
     FailsafeState,
     SatelliteScorer,
 )
+from gnss.cn0_detector import CN0AnomalyDetector, CN0AnomalyResult
 from gnss.constants import _DOPPLER_NOISE_STD, _GRAPH_SIGMA, _INS_VEL_STD
 from gnss.math_utils import _init_constellation
 from gnss.resilience_twin import (
@@ -96,6 +97,8 @@ class ReceiverObservation:
 
     Satellites that failed C/N0 or SQM checks are captured in
     ``pre_excluded`` so downstream modules can skip them.
+    ``cn0_anomaly`` carries the statistical C/N0 anomaly result when
+    cn0_dbhz data was provided; None otherwise.
     """
 
     epoch: int
@@ -105,6 +108,7 @@ class ReceiverObservation:
     sqm: np.ndarray | None  # (n_sats,), may be None
     pre_excluded: tuple[int, ...]  # satellites failed at RX stage
     n_sats: int  # total satellite count
+    cn0_anomaly: CN0AnomalyResult | None = None  # C/N0 anomaly result; None if no C/N0 data
 
 
 @dataclass(frozen=True)
@@ -165,6 +169,8 @@ class ReceiverAgent:
         self._cn0_min = cn0_min
         self._cn0_max = cn0_max
         self._sqm_thresh = sqm_thresh
+        # Stateful C/N0 anomaly detector (warmup adapts per-satellite baseline)
+        self._cn0_detector = CN0AnomalyDetector(n_sats=n_sats)
 
     def process(self, raw: RawEpochData) -> ReceiverObservation:
         """Validate raw data and return a normalised ReceiverObservation.
@@ -177,13 +183,15 @@ class ReceiverAgent:
             raise ValueError(f"ReceiverAgent: expected {self._n_sats} Doppler values, got {n}")
 
         pre_excluded: list[int] = []
+        cn0_anomaly: CN0AnomalyResult | None = None
 
-        # C/N0 gate
+        # C/N0 gate + anomaly detection
         if raw.cn0_dbhz is not None:
             cn0 = np.asarray(raw.cn0_dbhz, dtype=float)
             for i, c in enumerate(cn0):
                 if not (self._cn0_min <= c <= self._cn0_max):
                     pre_excluded.append(i)
+            cn0_anomaly = self._cn0_detector.assess(cn0)
 
         # SQM gate (exclude high-SQM satellites)
         sqm_arr: np.ndarray | None = None
@@ -210,6 +218,7 @@ class ReceiverAgent:
             sqm=sqm_arr,
             pre_excluded=tuple(sorted(set(pre_excluded))),
             n_sats=n,
+            cn0_anomaly=cn0_anomaly,
         )
 
 
@@ -257,6 +266,7 @@ class TwinCore:
             t=obs.epoch,
             ins_velocity=obs.ins_velocity,
             osnma_auth=obs.osnma_auth,
+            cn0_anomaly=obs.cn0_anomaly,
         )
 
         mc_auc: float | None = None
