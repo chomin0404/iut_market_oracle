@@ -55,8 +55,12 @@ Tao T., Vu V. (2011).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from schemas.graph import GraphInput
 
 # ---------------------------------------------------------------------------
 # Data containers
@@ -324,7 +328,7 @@ def rmt_dependency_concentration(
 
 
 def strength_matrix(
-    graph: "GraphInput",  # type: ignore[name-defined]  # noqa: F821, UP037
+    graph: GraphInput,
     node_order: list[str] | None = None,
 ) -> tuple[np.ndarray, list[str]]:
     """Build a symmetrised strength matrix from a GraphInput.

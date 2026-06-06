@@ -277,3 +277,53 @@ class TwinRunRequest(BaseModel):
                         f"los_vectors[{j}] norm={norm:.3f} is far from 1.0 — supply unit vectors"
                     )
         return self
+
+
+# ---------------------------------------------------------------------------
+# ML-based spoofing detection (IsolationForest, Phase 1)
+# ---------------------------------------------------------------------------
+
+_N_ML_RUNS_MAX: int = 2000
+
+
+class MLSpoofDetectRequest(BaseModel):
+    """Request body for POST /gnss/ml/spoof-detect.
+
+    Generates a Monte Carlo dataset via spoof_sim, trains an IsolationForest
+    detector on the training split, calibrates the decision threshold to
+    ``target_far`` on genuine test epochs, and returns evaluation metrics.
+    """
+
+    n_runs: int = Field(
+        default=200,
+        ge=40,
+        le=_N_ML_RUNS_MAX,
+        description="Total MC runs (alternating attacked / genuine). Must be even.",
+    )
+    n_epochs: int = Field(default=40, ge=20, le=200, description="Time steps per run")
+    n_sats: int = Field(default=6, ge=4, le=16, description="Number of visible satellites")
+    random_seed: int = Field(default=42, description="RNG seed for reproducibility")
+    target_far: float = Field(
+        default=1e-4,
+        gt=0.0,
+        lt=1.0,
+        description="Target false-alarm rate for threshold calibration",
+    )
+    train_fraction: float = Field(
+        default=0.8,
+        gt=0.0,
+        lt=1.0,
+        description="Fraction of runs used for training (remainder is test set)",
+    )
+
+
+class MLSpoofDetectResponse(BaseModel):
+    detection_rate: float = Field(description="Fraction of spoofed test epochs correctly alarmed")
+    false_alarm_rate: float = Field(
+        description="Fraction of genuine test epochs incorrectly alarmed"
+    )
+    threshold: float = Field(description="Calibrated IsolationForest decision threshold")
+    n_train_genuine: int = Field(description="Number of genuine epochs in training set")
+    n_train_spoofed: int = Field(description="Number of spoofed epochs in training set")
+    n_test_genuine: int = Field(description="Number of genuine epochs in test set")
+    n_test_spoofed: int = Field(description="Number of spoofed epochs in test set")

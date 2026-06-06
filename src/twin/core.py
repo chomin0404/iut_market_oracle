@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -669,7 +670,7 @@ def _default_transition_matrix(d: int, dt: float) -> np.ndarray:
 
 def run_mc_experiment(
     config: MCExperimentConfig | None = None,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> MCExperimentResult:
     """Run a reproducible Monte Carlo experiment through TwinCore.
 
@@ -689,7 +690,7 @@ def run_mc_experiment(
     MCExperimentResult
     """
     if config is None:
-        config = MCExperimentConfig(**kwargs)  # type: ignore[arg-type]
+        config = MCExperimentConfig(**kwargs)
 
     d = config.state_dim
     m = config.obs_dim

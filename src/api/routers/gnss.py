@@ -27,6 +27,8 @@ from api.schemas.gnss import (
     DetectionResult,
     DetectRequest,
     DetectResponse,
+    MLSpoofDetectRequest,
+    MLSpoofDetectResponse,
     MultiSensorSimRequest,
     ResilienceSimRequest,
     SimulateRequest,
@@ -574,3 +576,89 @@ def twin_run(req: TwinRunRequest) -> TwinRunReport:
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# ML-based spoofing detection (IsolationForest, Phase 1)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/ml/spoof-detect", response_model=MLSpoofDetectResponse)
+def ml_spoof_detect(req: MLSpoofDetectRequest) -> MLSpoofDetectResponse:
+    """Train and evaluate an IsolationForest spoofing detector on MC-generated data.
+
+    Pipeline (stateless — no model is persisted):
+
+    1. Generate ``n_runs`` MC trials via ``generate_full_dataset`` (alternating
+       attacked / genuine).
+    2. Split run IDs by ``train_fraction`` (run order preserved; no cross-run leakage).
+    3. Fit ``IsolationForestDetector`` on genuine training epochs only.
+    4. Calibrate decision threshold so FAR ≤ ``target_far`` on genuine test epochs
+       (exact discrete counting — no interpolation artefact).
+    5. Return detection rate (DR) and realised FAR on the test split.
+
+    **Notes**
+    - Because the pipeline runs the full MC simulation, response time scales with
+      ``n_runs × n_epochs``.  Keep ``n_runs`` ≤ 400 for interactive use.
+    - The calibrated threshold is also returned so callers can reproduce the result
+      offline by loading a separately trained model.
+    """
+    from gnss.dataset import generate_full_dataset, records_to_arrays
+    from gnss.ml_detector import IsolationForestDetector
+    from gnss.spoof_sim import SimConfig
+
+    try:
+        config = SimConfig(
+            n_epochs=req.n_epochs,
+            n_sats=req.n_sats,
+            random_seed=req.random_seed,
+        )
+        records = generate_full_dataset(config=config, n_runs=req.n_runs)
+
+        # ── Split run IDs into train / test (order-preserving, no cross-run leakage) ──
+        all_run_ids: list[str] = list(dict.fromkeys(r["run_id"] for r in records))
+        n_train = max(1, int(len(all_run_ids) * req.train_fraction))
+        train_ids: set[str] = set(all_run_ids[:n_train])
+        test_ids: set[str] = set(all_run_ids[n_train:])
+
+        train_recs = [r for r in records if r["run_id"] in train_ids]
+        test_recs = [r for r in records if r["run_id"] in test_ids]
+
+        X_train, y_train = records_to_arrays(train_recs, n_sats=req.n_sats)
+        X_test, y_test = records_to_arrays(test_recs, n_sats=req.n_sats)
+
+        X_test_genuine = X_test[y_test == 0]
+        X_test_spoofed = X_test[y_test == 1]
+
+        if len(X_test_genuine) == 0 or len(X_test_spoofed) == 0:
+            raise HTTPException(
+                status_code=422,
+                detail="Insufficient test data: need both genuine and spoofed epochs.",
+            )
+
+        # ── Train and calibrate ─────────────────────────────────────────────────
+        detector = IsolationForestDetector()
+        detector.fit(X_train, y_train)
+        threshold = detector.calibrate_threshold(X_test_genuine, target_far=req.target_far)
+
+        # ── Evaluate ────────────────────────────────────────────────────────────
+        alarm_genuine, _ = detector.predict(X_test_genuine)
+        alarm_spoofed, _ = detector.predict(X_test_spoofed)
+
+        return MLSpoofDetectResponse(
+            detection_rate=float(alarm_spoofed.mean()),
+            false_alarm_rate=float(alarm_genuine.mean()),
+            threshold=threshold,
+            n_train_genuine=int((y_train == 0).sum()),
+            n_train_spoofed=int((y_train == 1).sum()),
+            n_test_genuine=int(len(X_test_genuine)),
+            n_test_spoofed=int(len(X_test_spoofed)),
+        )
+
+    except HTTPException:
+        raise
+    except (ValueError, RuntimeError):
+        raise HTTPException(
+            status_code=500,
+            detail="ML detection pipeline failed due to an internal error.",
+        )

@@ -151,11 +151,15 @@ _RATE_LIMIT_RPM = int(os.environ.get("RATE_LIMIT_RPM", "0"))
 
 if not os.environ.get("ORACLE_API_KEY"):
     _log.warning(
-        "ORACLE_API_KEY is not set — protected endpoints (risk, gnss, valuation) "
-        "are open to all requests. Set this variable before deploying to production."
+        "ORACLE_API_KEY is not set — compute-intensive endpoints "
+        "(gnss, risk, valuation, bayesian /sample+/infer) are open to all requests. "
+        "graph, twin, entropy, matroid, forge, strategy, yield-twin, experiments, "
+        "and report are intentionally public (no auth required). "
+        "Set ORACLE_API_KEY before deploying to production."
     )
 
-# API key dependency shared by heavy-compute routers (risk, gnss, valuation).
+# API key dependency shared by gnss, risk, and valuation routers.
+# Bayesian router creates its own instance for /sample and /infer.
 # Dev mode: ORACLE_API_KEY unset → all requests accepted.
 # Production: set ORACLE_API_KEY to enforce the X-API-Key header.
 _require_oracle_key = make_api_key_dep("X-API-Key", "ORACLE_API_KEY")

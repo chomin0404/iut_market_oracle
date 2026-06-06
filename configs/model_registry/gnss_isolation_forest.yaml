@@ -1,0 +1,52 @@
+id: gnss_isolation_forest
+name: GNSS Spoofing Isolation Forest Detector
+category: anomaly_detection
+tags: [gnss, spoofing, isolation_forest, unsupervised, anomaly_detection]
+problem_type: Unsupervised anomaly detection of GNSS spoofing attacks from per-epoch feature vectors
+objective: Maximize separation between genuine and spoofed epochs using isolation depth
+
+state_variables:
+  - "x_t: feature vector at epoch t ∈ ℝ^{n_sats+3}"
+
+observables:
+  - "doppler_dev: per-satellite Doppler deviation vector ∈ ℝ^{n_sats} [Hz]"
+  - "m_t: all-forests count det(I + L_w) ∈ ℝ_{>0}"
+  - "chi_t: Doppler chi-squared statistic ∈ ℝ_{≥0}"
+  - "pvt_error: WLS post-fit residual norm ∈ ℝ_{≥0} [m/s]"
+
+parameters:
+  - "n_estimators: number of isolation trees (default 200)"
+  - "contamination: expected anomaly fraction in training data (default 0.05)"
+  - "max_features: feature sub-sampling ratio per tree (default 1.0)"
+  - "random_state: RNG seed for reproducibility"
+
+equations:
+  - "Feature vector: x_t = [doppler_dev_1, ..., doppler_dev_{n_sats}, m_t, chi_t, pvt_error]"
+  - "Isolation score: s(x, n) = 2^{-E[h(x)] / c(n)},  forest built with n_estimators trees, sub-sampled with max_features"
+  - "c(n) = 2 H(n-1) - (2(n-1)/n),  H(k) = ln(k) + γ_E (harmonic number approximation)"
+  - "Training set anomaly fraction assumed equal to contamination; RNG seeded with random_state"
+  - "Alarm: s(x, n) > threshold_s"
+
+constraints:
+  - "n_sats ≥ 4 (minimum for overdetermined WLS)"
+  - "contamination ∈ (0, 0.5)"
+  - "n_estimators ≥ 50"
+
+solver: Isolation Forest (Liu et al. 2008) via scikit-learn
+
+outputs:
+  - "anomaly_score: float ∈ [0, 1], higher = more anomalous"
+  - "alarm: bool — True if anomaly_score > threshold"
+  - "raw_score: raw decision function value from sklearn"
+
+assumptions:
+  - "Genuine epochs are the majority class"
+  - "Spoofed epochs occupy an isolated region in feature space"
+  - "Features are independent across epochs (no temporal structure exploited)"
+
+evidence_needed:
+  - "Genuine epoch samples from spoof_sim (label=0) for fitting"
+  - "Threshold calibrated to achieve FAR < 1e-4 on held-out genuine set"
+
+references:
+  - "Liu, F.T., Ting, K.M., Zhou, Z.H. (2008). Isolation Forest. ICDM 2008."

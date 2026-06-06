@@ -1,0 +1,60 @@
+id: gnss_lstm_anomaly
+name: GNSS Spoofing LSTM Anomaly Detector
+category: anomaly_detection
+tags: [gnss, spoofing, lstm, supervised, sequence, anomaly_detection]
+problem_type: Supervised binary classification of spoofing epochs from fixed-length feature sequences
+objective: Maximize detection rate of spoofed epochs while keeping false alarm rate < 1e-4
+
+state_variables:
+  - "h_t: LSTM hidden state ∈ ℝ^{hidden_size}"
+  - "c_t: LSTM cell state ∈ ℝ^{hidden_size}"
+
+observables:
+  - "X_t: sliding window of W epochs, shape (W, n_features)"
+  - "n_features = n_sats + 3  (doppler_dev, m_t, chi_t, pvt_error)"
+
+parameters:
+  - "W: sequence window length in epochs (default 16)"
+  - "hidden_size: LSTM hidden dimension (default 64)"
+  - "n_layers: number of stacked LSTM layers (default 2)"
+  - "dropout: dropout rate between LSTM layers (default 0.2)"
+  - "lr: Adam learning rate (default 1e-3)"
+  - "n_epochs_train: training epochs (default 30)"
+  - "batch_size: mini-batch size (default 64)"
+
+equations:
+  - "Architecture: n_layers stacked LSTM, each with hidden_size units, dropout applied between layers"
+  - "Input gate:  i_t = σ(W_i [h_{t-1}, x_t] + b_i),  h_{t-1} ∈ ℝ^{hidden_size}"
+  - "Forget gate: f_t = σ(W_f [h_{t-1}, x_t] + b_f)"
+  - "Cell update: g_t = tanh(W_g [h_{t-1}, x_t] + b_g)"
+  - "Output gate: o_t = σ(W_o [h_{t-1}, x_t] + b_o)"
+  - "Cell state:  c_t = f_t ⊙ c_{t-1} + i_t ⊙ g_t"
+  - "Hidden state: h_t = o_t ⊙ tanh(c_t)"
+  - "Classifier:  p̂ = σ(W_cls h_W + b_cls)"
+  - "Loss: L = BCE(p̂, y) optimised with Adam(lr=lr) over n_epochs_train epochs, batch_size samples per step"
+
+constraints:
+  - "W ≥ 4 (minimum context for meaningful temporal patterns)"
+  - "hidden_size ≥ 16"
+  - "dropout ∈ [0, 0.5)"
+  - "batch_size ≥ 8"
+
+solver: Adam optimizer with binary cross-entropy loss (PyTorch)
+
+outputs:
+  - "spoof_prob: float ∈ [0, 1], probability of spoofing at last epoch of window"
+  - "alarm: bool — True if spoof_prob > decision_threshold"
+  - "decision_threshold: calibrated on validation set to achieve FAR < 1e-4"
+
+assumptions:
+  - "Spoofing introduces detectable temporal patterns in Doppler deviations"
+  - "Window W epochs are sufficient to capture attack onset signature"
+  - "Training data from spoof_sim is representative of real attack distributions"
+
+evidence_needed:
+  - "Balanced JSONL dataset from spoof_sim (label 0/1 per epoch)"
+  - "Attack window covers at least W consecutive epochs for positive samples"
+
+references:
+  - "Hochreiter, S. & Schmidhuber, J. (1997). Long Short-Term Memory. Neural Computation 9(8)."
+  - "Graves, A. (2013). Generating Sequences With Recurrent Neural Networks. arXiv:1308.0850."

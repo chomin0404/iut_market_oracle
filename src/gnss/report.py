@@ -27,7 +27,7 @@ Typical usage::
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -438,9 +438,10 @@ def plot_gnss_report(
 
     ep = arrays.epochs
     for ax in (ax1, ax2, ax3, ax4_heat, ax4_cnt, ax5):
-        ax.set_xlim(float(ep[0]) - 0.5, float(ep[-1]) + 0.5)  # type: ignore[union-attr]
-        ax.set_xlabel("Epoch", fontsize=8)  # type: ignore[union-attr]
-        ax.tick_params(labelsize=8)  # type: ignore[union-attr]
+        _ax = cast("Axes", ax)
+        _ax.set_xlim(float(ep[0]) - 0.5, float(ep[-1]) + 0.5)
+        _ax.set_xlabel("Epoch", fontsize=8)
+        _ax.tick_params(labelsize=8)
 
     _panel_attack_evidence(ax1, arrays, alert_levels, failsafe_levels)
     _panel_doppler_residuals(ax2, arrays)

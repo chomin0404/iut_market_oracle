@@ -503,6 +503,61 @@ class _TrialSummary:
     degradation: list[float]
 
 
+def _compute_epoch_signal(
+    vel: np.ndarray,
+    clock_drift: float,
+    rng: np.random.Generator,
+    los: np.ndarray,
+    config: SimConfig,
+    b_common: float,
+    under_attack: bool,
+) -> tuple[float, float, float | None]:
+    """Compute per-epoch signal-level measurements and fused detection score.
+
+    Separated from ``simulate_trial`` to enable reuse in dataset generators
+    and to keep the main trial loop focused on bookkeeping.
+
+    Args:
+        vel:          Receiver velocity state [m/s] (3,).
+        clock_drift:  Receiver clock drift [m/s].
+        rng:          NumPy Generator (mutated in place).
+        los:          (n_sats, 3) fixed LOS unit vectors.
+        config:       SimConfig parameters.
+        b_common:     Common meaconing bias [Hz].
+        under_attack: Whether this epoch is within the attack window.
+
+    Returns:
+        score:     Fused Fisher detection score F ∼ χ²(_FISHER_DOF).
+        pvt_err:   L2 norm of WLS-PVT residuals for the selected subset.
+        deg_ratio: pvt_err / unconstrained_pvt_norm if under_attack, else None.
+    """
+    vel_hat = vel + rng.normal(0.0, _INS_VEL_STD, size=3)
+    clock_hat = clock_drift + rng.normal(0.0, _INS_CLOCK_STD)
+
+    meas = _gen_genuine_measurements(
+        los, vel, clock_drift, vel_hat, clock_hat, config.doppler_noise_std, rng
+    )
+    if under_attack:
+        meas = _inject_attack(meas, b_common, config.spoof_diff_std, config.n_sats, rng)
+
+    feats = _build_features(meas)
+    G = _build_similarity_graph(feats, config.graph_sigma)
+    m_t, chi_t = percolation_stats(G, config.doppler_noise_std)
+    S = select_subset(G.W, config.subset_size)
+
+    _, residuals = wls_pvt(los, meas, G.W, S)
+    pvt_err = float(np.linalg.norm(residuals))
+    score = fuse_score(m_t, chi_t, residuals, G.W, S, config)
+
+    deg_ratio: float | None = None
+    if under_attack:
+        _, residuals_all = wls_pvt(los, meas, G.W, list(range(config.n_sats)))
+        r_all = float(np.linalg.norm(residuals_all)) + 1e-12
+        deg_ratio = pvt_err / r_all
+
+    return score, pvt_err, deg_ratio
+
+
 def simulate_trial(
     config: SimConfig,
     attacked: bool,
@@ -544,35 +599,11 @@ def simulate_trial(
 
     for t in range(config.n_epochs):
         vel, clock_drift = _propagate_state(vel, clock_drift, rng)
-
-        vel_hat = vel + rng.normal(0.0, _INS_VEL_STD, size=3)
-        clock_hat = clock_drift + rng.normal(0.0, _INS_CLOCK_STD)
-
         under_attack = attacked and (attack_start <= t < attack_end)
 
-        meas = _gen_genuine_measurements(
-            los,
-            vel,
-            clock_drift,
-            vel_hat,
-            clock_hat,
-            config.doppler_noise_std,
-            rng,
+        score, pvt_err, deg_ratio = _compute_epoch_signal(
+            vel, clock_drift, rng, los, config, b_common, under_attack
         )
-        if under_attack:
-            meas = _inject_attack(meas, b_common, config.spoof_diff_std, config.n_sats, rng)
-
-        feats = _build_features(meas)
-        G = _build_similarity_graph(feats, config.graph_sigma)
-
-        m_t, chi_t = percolation_stats(G, config.doppler_noise_std)
-        S = select_subset(G.W, config.subset_size)
-
-        _, residuals = wls_pvt(los, meas, G.W, S)
-        _, residuals_all = wls_pvt(los, meas, G.W, list(range(config.n_sats)))
-
-        pvt_err = float(np.linalg.norm(residuals))
-        score = fuse_score(m_t, chi_t, residuals, G.W, S, config)
 
         alarm = score > tau
         is_first_alarm = alarm and first_alarm is None and under_attack
@@ -586,9 +617,8 @@ def simulate_trial(
         epoch_delays.append(float(t - attack_start) if is_first_alarm else None)
         epoch_pvt_errors.append(pvt_err)
 
-        if under_attack:
-            r_all = float(np.linalg.norm(residuals_all)) + 1e-12
-            degradation.append(pvt_err / r_all)
+        if deg_ratio is not None:
+            degradation.append(deg_ratio)
 
     first_delay: float | None = (
         float(first_alarm - attack_start) if first_alarm is not None else None
@@ -618,6 +648,54 @@ def simulate_trial(
 # ---------------------------------------------------------------------------
 # Monte Carlo simulation
 # ---------------------------------------------------------------------------
+
+
+def _build_mc_report(
+    all_scores: list[float],
+    all_labels: list[int],
+    delay_samples: list[float],
+    degradation_samples: list[float],
+    run_results: list[RunResult],
+    config: SimConfig,
+    tau: float,
+) -> MCSimReport:
+    """Aggregate per-trial results into the final MCSimReport.
+
+    Separated from ``run_mc_simulation`` to keep the trial loop concise and
+    to allow independent unit testing of the aggregation logic.
+    """
+    scores_arr = np.array(all_scores, dtype=float)
+    labels_arr = np.array(all_labels, dtype=int)
+
+    fpr_list, tpr_list, auc = _compute_roc(scores_arr, labels_arr)
+
+    pred = scores_arr >= tau
+    tp = int((pred & (labels_arr == 1)).sum())
+    fp = int((pred & (labels_arr == 0)).sum())
+    fn = int((~pred & (labels_arr == 1)).sum())
+    tn = int((~pred & (labels_arr == 0)).sum())
+    p_d = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    p_fa = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+
+    mean_delay = float(np.mean(delay_samples)) if delay_samples else float("nan")
+    std_delay = float(np.std(delay_samples)) if delay_samples else 0.0
+    mean_deg = float(np.mean(degradation_samples)) if degradation_samples else 1.0
+    std_deg = float(np.std(degradation_samples)) if degradation_samples else 0.0
+
+    return MCSimReport(
+        roc_fpr=fpr_list,
+        roc_tpr=tpr_list,
+        auc=auc,
+        mean_detection_delay=mean_delay,
+        std_detection_delay=std_delay,
+        mean_pvt_degradation=mean_deg,
+        std_pvt_degradation=std_deg,
+        p_detection=p_d,
+        p_false_alarm=p_fa,
+        n_mc=config.n_mc,
+        produced_at=datetime.now(timezone.utc),
+        runs=run_results,
+    )
 
 
 def run_mc_simulation(
@@ -664,36 +742,6 @@ def run_mc_simulation(
         if summary.run_result.delay is not None:
             delay_samples.append(summary.run_result.delay)
 
-    scores_arr = np.array(all_scores, dtype=float)
-    labels_arr = np.array(all_labels, dtype=int)
-
-    fpr_list, tpr_list, auc = _compute_roc(scores_arr, labels_arr)
-
-    # Performance at NP threshold
-    pred = scores_arr >= tau
-    tp = int((pred & (labels_arr == 1)).sum())
-    fp = int((pred & (labels_arr == 0)).sum())
-    fn = int((~pred & (labels_arr == 1)).sum())
-    tn = int((~pred & (labels_arr == 0)).sum())
-    p_d = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    p_fa = fp / (fp + tn) if (fp + tn) > 0 else 0.0
-
-    mean_delay = float(np.mean(delay_samples)) if delay_samples else float("nan")
-    std_delay = float(np.std(delay_samples)) if delay_samples else 0.0
-    mean_deg = float(np.mean(degradation_samples)) if degradation_samples else 1.0
-    std_deg = float(np.std(degradation_samples)) if degradation_samples else 0.0
-
-    return MCSimReport(
-        roc_fpr=fpr_list,
-        roc_tpr=tpr_list,
-        auc=auc,
-        mean_detection_delay=mean_delay,
-        std_detection_delay=std_delay,
-        mean_pvt_degradation=mean_deg,
-        std_pvt_degradation=std_deg,
-        p_detection=p_d,
-        p_false_alarm=p_fa,
-        n_mc=config.n_mc,
-        produced_at=datetime.now(timezone.utc),
-        runs=run_results,
+    return _build_mc_report(
+        all_scores, all_labels, delay_samples, degradation_samples, run_results, config, tau
     )

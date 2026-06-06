@@ -114,7 +114,7 @@ class MultiSensorConfig:
             )
         if self.capture_len < 1:
             raise ValueError("capture_len must be >= 1")
-        if len(self.score_weights) != 3:  # type: ignore[arg-type]
+        if len(self.score_weights) != 3:
             raise ValueError("score_weights must have exactly 3 elements")
         if any(w < 0.0 for w in self.score_weights):
             raise ValueError("score_weights must all be non-negative")
