@@ -333,17 +333,13 @@ def test_named_infer_returns_200() -> None:
 
 
 def test_named_infer_posterior_sums_to_one() -> None:
-    body = client.post(
-        _WATER_INFER_URL, json={"query": "demand_level", "evidence": {}}
-    ).json()
+    body = client.post(_WATER_INFER_URL, json={"query": "demand_level", "evidence": {}}).json()
     total = sum(body["posterior"].values())
     assert abs(total - 1.0) < 1e-6
 
 
 def test_named_infer_state_keys_match_demand_level() -> None:
-    body = client.post(
-        _WATER_INFER_URL, json={"query": "demand_level", "evidence": {}}
-    ).json()
+    body = client.post(_WATER_INFER_URL, json={"query": "demand_level", "evidence": {}}).json()
     assert set(body["posterior"].keys()) == {"low", "normal", "high"}
 
 

@@ -247,6 +247,7 @@ async def simulate(
 
     Supported copulas: gaussian, student_t, clayton, independent.
     """
+
     def _run() -> SimulateResponse:
         try:
             result = _simulator.simulate(
@@ -481,6 +482,7 @@ async def risk_gnss_scenario(
     Typical copula choice for spoofing scenarios: ``student_t`` with low df (heavy tails)
     and high off-diagonal correlation to capture simultaneous signal degradation.
     """
+
     def _run() -> GnssScenarioResponse:
         try:
             result = _simulator.simulate(
