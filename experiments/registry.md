@@ -20,3 +20,4 @@
 | T200-network | Bayesian Network (Water Demand) — 2026-06-06 | 2026-06-06 | bayesian, network, dirichlet, water-demand, calibration | 5-node DAG for Fukuoka water demand prediction. Dirichlet posterior update via observe_batch + apply_dirichlet_posterior. Weekday/holiday high-demand delta=0.084. src/bayesian/water_demand_net.py. |
 | exp-010 | DCF report — 2026-06-06 | 2026-06-06 11:18 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
 | exp-011 | DCF report — 2026-06-06 | 2026-06-06 11:32 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
+| exp-012 | DCF report — 2026-06-06 | 2026-06-06 11:44 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
