@@ -26,6 +26,9 @@ jobs:
       - name: Format check (ruff format)
         run: uv run ruff format --check .
 
+      - name: Type check (pyright)
+        run: uv run pyright src/
+
       - name: Test with coverage
         run: uv run pytest -q --tb=short --cov=src --cov-report=term-missing --cov-fail-under=80
         env:

@@ -192,7 +192,6 @@ class GPSurrogate:
 
         if best_theta is None:
             best_theta = np.zeros(n_params)
-        assert best_theta is not None
 
         signal_var = math.exp(best_theta[0]) ** 2
         length_scales = tuple(float(v) for v in np.exp(best_theta[1 : d + 1]))
@@ -316,9 +315,11 @@ class GPSurrogate:
     def _update_cache(self) -> None:
         """Recompute Cholesky factor and alpha after fit."""
         hp = self._hyperparams
-        assert hp is not None
+        if hp is None:
+            raise RuntimeError("GPSurrogate has not been fitted; call fit() first")
         X, y = self._X, self._y
-        assert X is not None and y is not None
+        if X is None or y is None:
+            raise RuntimeError("GPSurrogate training data missing; call fit() first")
 
         ls = np.array(hp.length_scales)
         K = _rbf_kernel(X, X, ls, hp.signal_var)

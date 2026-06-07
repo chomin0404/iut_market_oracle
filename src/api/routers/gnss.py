@@ -17,6 +17,7 @@ Resilience Twin — 4-layer fault discrimination (flagship, T1500):
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 
 import numpy as np
@@ -70,6 +71,7 @@ from schemas import (
 )
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +96,7 @@ def simulate(req: SimulateRequest) -> SimulateResponse:
             seed=req.seed,
         )
     except (ValueError, RuntimeError, OSError):
+        _logger.exception("unexpected error")
         raise HTTPException(status_code=500, detail="Simulation failed due to an internal error.")
 
     return SimulateResponse(
@@ -139,8 +142,10 @@ def verify_key(req: VerifyKeyRequest) -> VerifyKeyResponse:
             anchor_index=req.anchor_index,
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     except (TypeError, AttributeError) as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=422, detail=f"Invalid hex or key format: {e}")
 
     return VerifyKeyResponse(
@@ -181,6 +186,7 @@ def detect(req: DetectRequest) -> DetectResponse:
                 mac_tag = bytes.fromhex(obs.mac_tag_hex)
                 tesla_key = bytes.fromhex(obs.tesla_key_hex) if obs.tesla_key_hex else None
             except ValueError as e:
+                _logger.warning("%s", e, exc_info=True)
                 raise HTTPException(status_code=422, detail=f"Hex decode error: {e}")
 
             msg = NavMessage(
@@ -207,6 +213,7 @@ def detect(req: DetectRequest) -> DetectResponse:
     except HTTPException:
         raise
     except (RuntimeError, ValueError, KeyError, AttributeError):
+        _logger.exception("unexpected error")
         raise HTTPException(status_code=500, detail="Detection failed due to an internal error.")
 
     detected_count = sum(1 for r in results if r.spoofing_detected)
@@ -255,6 +262,7 @@ def spoof_sim(req: SpooferSimRequest) -> MCSimReport:
         )
         return run_mc_simulation(config)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -305,6 +313,7 @@ def multi_sensor_sim(req: MultiSensorSimRequest) -> MSSimReport:
         )
         return run_ms_simulation(config)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -351,6 +360,7 @@ def resilience_sim(req: ResilienceSimRequest) -> ResilienceTwinReport:
         )
         return run_resilience_simulation(config)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -575,6 +585,7 @@ def twin_run(req: TwinRunRequest) -> TwinRunReport:
         return report
 
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -658,6 +669,7 @@ def ml_spoof_detect(req: MLSpoofDetectRequest) -> MLSpoofDetectResponse:
     except HTTPException:
         raise
     except (ValueError, RuntimeError):
+        _logger.exception("unexpected error")
         raise HTTPException(
             status_code=500,
             detail="ML detection pipeline failed due to an internal error.",

@@ -88,7 +88,7 @@ class IsolationForestDetector:
     ) -> None:
         self._model = IsolationForest(
             n_estimators=n_estimators,
-            contamination=contamination,
+            contamination=contamination,  # type: ignore[arg-type]
             max_features=max_features,
             random_state=random_state,
         )
@@ -355,7 +355,8 @@ class LSTMDetector:
 
     def _predict_proba(self, X_win: np.ndarray) -> np.ndarray:
         """Return spoofing probabilities for pre-built windows."""
-        assert self._net is not None
+        if self._net is None:
+            raise RuntimeError("LSTMDetector has not been trained; call fit() first")
         self._net.eval()
         with torch.no_grad():
             X_t = torch.from_numpy(X_win.astype(np.float32)).to(self._device)

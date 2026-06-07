@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException
@@ -19,6 +20,7 @@ from exit.timing_map import build_timing_map, compare_exit_options, price_with_t
 from schemas import ExitValueSummary, TimingDistribution
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 _IPO_OPTION = {
     "name": "IPO exit",
@@ -83,34 +85,37 @@ _COMPARE_EXAMPLES = {
 
 @router.post("/price", response_model=ExitValueSummary)
 def price(
-    req: Annotated[PriceRequest, Body(openapi_examples=_PRICE_EXAMPLES)],
+    req: Annotated[PriceRequest, Body(openapi_examples=_PRICE_EXAMPLES)],  # type: ignore[arg-type]
 ) -> ExitValueSummary:
     """Price a single exit option (option-style payoff + sensitivity)."""
     try:
         return price_option(req.option, req.scenario_probs)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/price-all", response_model=list[ExitValueSummary])
 def price_all(
-    req: Annotated[PriceAllRequest, Body(openapi_examples=_PRICE_ALL_EXAMPLES)],
+    req: Annotated[PriceAllRequest, Body(openapi_examples=_PRICE_ALL_EXAMPLES)],  # type: ignore[arg-type]
 ) -> list[ExitValueSummary]:
     """Price all exit options sorted by expected value descending."""
     try:
         return price_all_options(req.options, req.scenario_probs)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/timing-map", response_model=TimingDistribution)
 def timing_map(
-    req: Annotated[TimingMapRequest, Body(openapi_examples=_TIMING_EXAMPLES)],
+    req: Annotated[TimingMapRequest, Body(openapi_examples=_TIMING_EXAMPLES)],  # type: ignore[arg-type]
 ) -> TimingDistribution:
     """Discretise the triangular exit-timing distribution into a probability map."""
     try:
         return build_timing_map(req.option, n_steps=req.n_steps)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -121,12 +126,13 @@ def price_timing(req: PriceWithTimingRequest) -> PriceWithTimingResponse:
         ev = price_with_timing_map(req.option, req.timing, req.scenario_probs)
         return PriceWithTimingResponse(expected_value=ev)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/compare", response_model=list[TimingDistribution])
 def compare(
-    req: Annotated[CompareRequest, Body(openapi_examples=_COMPARE_EXAMPLES)],
+    req: Annotated[CompareRequest, Body(openapi_examples=_COMPARE_EXAMPLES)],  # type: ignore[arg-type]
 ) -> list[TimingDistribution]:
     """Build timing distributions for multiple options, sorted by expected_timing."""
     try:
@@ -134,4 +140,5 @@ def compare(
             req.options, n_steps=req.n_steps, scenario_probs=req.scenario_probs
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

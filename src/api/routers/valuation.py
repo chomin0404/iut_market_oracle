@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException
@@ -18,6 +19,7 @@ from valuation.dcf import DCFInputs, dcf_valuation, reverse_dcf_implied_growth
 from valuation.scenario import run_all_scenarios, run_scenario
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 _DCF_EXAMPLES = {
     "saas_growth": {
@@ -66,6 +68,7 @@ def run_scenario_endpoint(assumption: AssumptionSet) -> ScenarioResult:
     try:
         return run_scenario(assumption)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -75,12 +78,13 @@ def run_all_endpoint(req: RunAllRequest) -> list[ScenarioResult]:
     try:
         return run_all_scenarios(req.scenario_dir)
     except (FileNotFoundError, ValueError) as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/dcf", response_model=DCFResponse)
 def dcf_endpoint(
-    req: Annotated[DCFRequest, Body(openapi_examples=_DCF_EXAMPLES)],
+    req: Annotated[DCFRequest, Body(openapi_examples=_DCF_EXAMPLES)],  # type: ignore[arg-type]
 ) -> DCFResponse:
     """Run raw DCF valuation from explicit inputs."""
     try:
@@ -100,12 +104,13 @@ def dcf_endpoint(
             enterprise_value=result.enterprise_value,
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/dcf/reverse", response_model=ReverseDCFResponse)
 def reverse_dcf_endpoint(
-    req: Annotated[ReverseDCFRequest, Body(openapi_examples=_REVERSE_DCF_EXAMPLES)],
+    req: Annotated[ReverseDCFRequest, Body(openapi_examples=_REVERSE_DCF_EXAMPLES)],  # type: ignore[arg-type]
 ) -> ReverseDCFResponse:
     """Solve for the implied growth rate that produces the target enterprise value."""
     try:
@@ -118,4 +123,5 @@ def reverse_dcf_endpoint(
         )
         return ReverseDCFResponse(implied_growth_rate=g)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

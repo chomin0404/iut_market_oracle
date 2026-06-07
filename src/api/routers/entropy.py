@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from api.schemas.entropy import (
@@ -15,6 +17,7 @@ from entropy.monitor import compute_entropy, compute_kl, entropy_rate
 from schemas import AlertType, EntropyAlert, EntropyReport
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -29,6 +32,7 @@ def compute_entropy_endpoint(req: EntropyRequest) -> EntropyResponse:
         h = compute_entropy(req.posterior, req.prior)
         return EntropyResponse(entropy=h)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -39,6 +43,7 @@ def compute_kl_endpoint(req: KLRequest) -> KLResponse:
         kl = compute_kl(req.posterior, req.prior)
         return KLResponse(kl_divergence=kl)
     except (ValueError, KeyError) as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -99,4 +104,5 @@ def detect(req: DetectRequest) -> EntropyReport:
             alerts=alerts,
         )
     except (ValueError, KeyError) as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

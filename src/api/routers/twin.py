@@ -3,6 +3,8 @@ regime-switching price simulation, and market evolution (T800 / T1100)."""
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from fastapi import APIRouter, HTTPException
 
@@ -24,6 +26,7 @@ from twin.regime_simulator import simulate_market_evolution, simulate_regime_swi
 from twin.simulator import simulate
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +52,7 @@ def simulate_endpoint(req: SimulateRequest) -> SimulationResult:
             transition_matrix=F,
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -64,6 +68,7 @@ def calibrate_endpoint(req: CalibrateRequest) -> CalibrateResponse:
         )
         return CalibrateResponse(posterior=posterior, state=state)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -88,6 +93,7 @@ def regime_simulate(req: RegimeSimulateRequest) -> RegimeSwitchResult:
             rng=np.random.default_rng(req.random_seed),
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -107,6 +113,7 @@ def regime_simulate_summary(req: RegimeSimulateRequest) -> RegimeSimulateSummary
             rng=np.random.default_rng(req.random_seed),
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
     prices = result.prices
@@ -141,4 +148,5 @@ def market_evolve(req: MarketEvolveRequest) -> MarketEvolutionResult:
             rng=np.random.default_rng(req.random_seed),
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

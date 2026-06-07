@@ -11,6 +11,7 @@ Endpoints:
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -22,6 +23,7 @@ from models.verifier import verify_all, verify_yaml_file
 from schemas import ForgeReport, TraceNode, VerificationReport
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 _REGISTRY_DIR = Path("configs") / "model_registry"
 _AUDIT_LOG = Path(".claude") / "audit" / "modelforge.jsonl"
@@ -48,9 +50,15 @@ def forge_run(model_id: str) -> ForgeReport:
             return list(reports.values())[-1]
         return forge.run(model_id)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        _logger.warning("forge_run: model not found: %s", model_id, exc_info=exc)
+        raise HTTPException(
+            status_code=404, detail=f"Model '{model_id}' not found in registry"
+        ) from exc
     except (ValueError, KeyError, RuntimeError, OSError) as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        _logger.exception("forge_run: internal error for model '%s'", model_id)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to run forge pipeline for '{model_id}'"
+        ) from exc
 
 
 @router.post("/verify/{model_id}", response_model=VerificationReport)
@@ -68,9 +76,13 @@ def forge_verify(model_id: str) -> VerificationReport:
         yaml_path = _REGISTRY_DIR / f"{model_id}.yaml"
         return verify_yaml_file(yaml_path)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        _logger.warning("forge_verify: model not found: %s", model_id, exc_info=exc)
+        raise HTTPException(
+            status_code=404, detail=f"Model '{model_id}' not found in registry"
+        ) from exc
     except (ValueError, KeyError, RuntimeError, OSError) as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        _logger.exception("forge_verify: internal error for model '%s'", model_id)
+        raise HTTPException(status_code=500, detail=f"Failed to verify model '{model_id}'") from exc
 
 
 @router.get("/trace/{model_id}", response_model=list[TraceNode])

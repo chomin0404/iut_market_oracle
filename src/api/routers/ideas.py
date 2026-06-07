@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -11,6 +12,7 @@ from modeling_api.examples import EXAMPLE_IDEA_INPUT
 from schemas import IdeaInput, ParsedIdeaResponse
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 # Dependency: validates X-Ideas-API-Key when IDEAS_API_KEY env var is set.
 # When IDEAS_API_KEY is unset the endpoint is open (local / dev mode).
@@ -56,11 +58,14 @@ async def parse_idea(
 
         return await _parse(idea)
     except KeyError as exc:
+        _logger.exception("unexpected error")
         raise HTTPException(
             status_code=503,
             detail=f"ANTHROPIC_API_KEY environment variable is not set: {exc}",
         )
     except ValueError as exc:
+        _logger.error("%s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc))
     except (RuntimeError, OSError, AttributeError) as exc:
+        _logger.error("%s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"LLM API error: {exc}")

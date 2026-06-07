@@ -19,13 +19,12 @@ import numpy as np
 import pytest
 
 from gnss.cn0_detector import (
-    CN0AnomalyDetector,
-    CN0AnomalyResult,
     _CN0_CORR_MIN_EPOCHS,
-    _CN0_NOMINAL_DBHz,
-    _CN0_SPREAD_MIN_DBHz,
     _CN0_WARMUP_EPOCHS,
     _CN0_WINDOW,
+    CN0AnomalyDetector,
+    CN0AnomalyResult,
+    _CN0_NOMINAL_DBHz,
 )
 
 RANDOM_SEED: int = 0
@@ -177,9 +176,7 @@ def test_cusum_does_not_fire_at_nominal() -> None:
     rng = np.random.default_rng(RANDOM_SEED)
     results = [det.assess(rng.normal(40.0, 0.3, size=4)) for _ in range(50)]
     # Post-warmup only
-    assert not any(r.cusum_alert for r in results[warmup:]), (
-        "False CUSUM alarm at nominal C/N0"
-    )
+    assert not any(r.cusum_alert for r in results[warmup:]), "False CUSUM alarm at nominal C/N0"
 
 
 def test_cusum_reset_clears_state() -> None:

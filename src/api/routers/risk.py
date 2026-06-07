@@ -8,6 +8,7 @@ Routes (mounted at /risk):
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import uuid
 from collections import OrderedDict
@@ -49,6 +50,7 @@ from core.simulator import MonteCarloSimulator
 _simulator = MonteCarloSimulator()
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 # Bounded LRU simulation cache: simulation_id -> np.ndarray (n_samples, n_vars)
 # Oldest entries are evicted when the cache exceeds _CACHE_MAXSIZE.
@@ -258,6 +260,7 @@ async def simulate(
                 seed=body.seed,
             )
         except ValueError as exc:
+            _logger.warning("%s", exc, exc_info=True)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         sim_id = str(uuid.uuid4())
@@ -493,6 +496,7 @@ async def risk_gnss_scenario(
                 seed=body.seed,
             )
         except ValueError as exc:
+            _logger.warning("%s", exc, exc_info=True)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         sorted_alphas = sorted(body.alphas)
@@ -612,6 +616,7 @@ async def risk_sensitivity(
             with ThreadPoolExecutor(max_workers=n_workers) as executor:
                 risk_values: list[float] = list(executor.map(_one_step, sweep.values))
         except ValueError as exc:
+            _logger.warning("%s", exc, exc_info=True)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         max_val = max(risk_values)

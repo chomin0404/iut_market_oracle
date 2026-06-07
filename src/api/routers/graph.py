@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException
@@ -10,6 +11,7 @@ from graph.metrics import compute_all
 from schemas import GraphInput, PortfolioMetrics
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 _GRAPH_EXAMPLES = {
     "skill_graph": {
@@ -47,10 +49,11 @@ _GRAPH_EXAMPLES = {
 
 @router.post("/metrics", response_model=PortfolioMetrics)
 def graph_metrics(
-    graph: Annotated[GraphInput, Body(openapi_examples=_GRAPH_EXAMPLES)],
+    graph: Annotated[GraphInput, Body(openapi_examples=_GRAPH_EXAMPLES)],  # type: ignore[arg-type]
 ) -> PortfolioMetrics:
     """Compute basis diversity, dependency concentration, and portfolio score."""
     try:
         return compute_all(graph)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

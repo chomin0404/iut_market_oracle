@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from api.schemas.matroid import LogConcavityRequest
@@ -9,6 +11,7 @@ from matroid.log_concavity import compute_log_concave_weights
 from schemas import MatroidLogConcavityResult
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -34,4 +37,5 @@ def log_concavity(req: LogConcavityRequest) -> MatroidLogConcavityResult:
             corank_weight=req.corank_weight,
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

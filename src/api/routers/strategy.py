@@ -6,6 +6,8 @@ Endpoint:
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from api.schemas.strategy import StrategyRunRequest
@@ -13,6 +15,7 @@ from schemas import StrategyTwinReport
 from strategy_twin.twin import StrategyTwin, StrategyTwinConfig
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -47,4 +50,5 @@ def run_strategy_twin(request: StrategyRunRequest) -> StrategyTwinReport:
         twin = StrategyTwin(config)
         return twin.run()
     except ValueError as exc:
+        _logger.warning("%s", exc, exc_info=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc

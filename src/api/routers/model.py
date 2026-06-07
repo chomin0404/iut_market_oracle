@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Body, HTTPException
@@ -11,6 +12,7 @@ from models.registry import load_registry, search_registry
 from schemas import ModelRecommendation, ModelRegistryEntry, ModelSpec
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 # Load registry once at module import time.
 _registry: list[ModelRegistryEntry] = load_registry()
@@ -94,13 +96,16 @@ def recommend_model(
             registry_ids=registry_ids,
         )
     except KeyError as exc:
+        _logger.exception("unexpected error")
         raise HTTPException(
             status_code=503,
             detail=f"ANTHROPIC_API_KEY environment variable is not set: {exc}",
         )
     except ValueError as exc:
+        _logger.error("%s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc))
     except (RuntimeError, OSError, AttributeError) as exc:
+        _logger.error("%s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"LLM API error: {exc}")
 
 
@@ -118,11 +123,14 @@ def generate_model(
 
         return generate_model_spec(idea=req.idea, domain=req.domain)
     except KeyError as exc:
+        _logger.exception("unexpected error")
         raise HTTPException(
             status_code=503,
             detail=f"ANTHROPIC_API_KEY environment variable is not set: {exc}",
         )
     except ValueError as exc:
+        _logger.error("%s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc))
     except (RuntimeError, OSError, AttributeError) as exc:
+        _logger.error("%s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"LLM API error: {exc}")

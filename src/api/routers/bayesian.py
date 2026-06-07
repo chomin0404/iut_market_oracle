@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -21,6 +22,7 @@ from bayesian.updater import update
 from schemas import PosteriorSummary
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 # Inference endpoints are compute-intensive; require X-API-Key when ORACLE_API_KEY is set.
 _require_oracle_key = make_api_key_dep("X-API-Key", "ORACLE_API_KEY")
@@ -119,12 +121,13 @@ def _set_cpt(net: BayesianNetwork, cpt_def: CptDef) -> None:
 
 @router.post("/update", response_model=PosteriorSummary)
 def bayesian_update(
-    req: Annotated[UpdateRequest, Body(openapi_examples=_BAYESIAN_EXAMPLES)],
+    req: Annotated[UpdateRequest, Body(openapi_examples=_BAYESIAN_EXAMPLES)],  # type: ignore[arg-type]
 ) -> PosteriorSummary:
     """Bayesian conjugate update (beta or normal) given a prior and evidence list."""
     try:
         return update(req.prior, req.evidence)
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -150,13 +153,14 @@ def named_network_infer(name: str, req: NamedInferRequest) -> InferResponse:
     try:
         posterior = infer(net, req.query, req.evidence or None)
     except (ValueError, KeyError) as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     return InferResponse(query=req.query, evidence=req.evidence, posterior=posterior)
 
 
 @router.post("/infer", response_model=InferResponse, dependencies=[Depends(_require_oracle_key)])
 def bayesian_infer(
-    req: Annotated[InferRequest, Body(openapi_examples=_INFER_EXAMPLES)],
+    req: Annotated[InferRequest, Body(openapi_examples=_INFER_EXAMPLES)],  # type: ignore[arg-type]
 ) -> InferResponse:
     """Compute P(query | evidence) via Variable Elimination on a discrete Bayesian Network.
 
@@ -170,5 +174,6 @@ def bayesian_infer(
         net = _build_network(req)
         posterior = infer(net, req.query, req.evidence or None)
     except (ValueError, KeyError) as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     return InferResponse(query=req.query, evidence=req.evidence, posterior=posterior)

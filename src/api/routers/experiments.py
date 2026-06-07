@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import APIRouter, HTTPException
@@ -16,6 +17,7 @@ from experiments.tracker import (
 from schemas import ExperimentMeta
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 _EXPERIMENTS_ROOT = os.environ.get("EXPERIMENTS_ROOT", "experiments")
 
@@ -40,6 +42,7 @@ def create(req: ExperimentCreateRequest) -> ExperimentMeta:
             experiments_root=_EXPERIMENTS_ROOT,
         )
     except (ValueError, OverflowError) as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -55,6 +58,7 @@ def get(exp_id: str) -> ExperimentMeta:
     try:
         return load_experiment(exp_id, _EXPERIMENTS_ROOT)
     except FileNotFoundError:
+        _logger.warning("Experiment '%s' not found", exp_id)
         raise HTTPException(status_code=404, detail=f"Experiment '{exp_id}' not found.")
 
 
@@ -65,4 +69,5 @@ def update(exp_id: str, req: ExperimentUpdateRequest) -> ExperimentMeta:
     try:
         return update_experiment(exp_id, experiments_root=_EXPERIMENTS_ROOT, **fields)
     except (FileNotFoundError, ValueError) as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

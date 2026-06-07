@@ -7,6 +7,8 @@ Endpoints:
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from api.schemas.yield_twin import YieldTwinRequest
@@ -14,6 +16,7 @@ from schemas import DOERecommendation, YieldTwinReport
 from yield_twin.twin import YieldTwinConfig, recommend_next_experiment
 
 router = APIRouter()
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -39,6 +42,7 @@ def _build_report(req: YieldTwinRequest) -> YieldTwinReport:
             n_candidates=req.n_candidates,
         )
     except ValueError as e:
+        _logger.warning("%s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
