@@ -54,6 +54,7 @@ known-first-party = [
 [tool.pyright]
 pythonVersion = "3.10"
 include = ["src", "tests"]
+extraPaths = ["src"]
 strict = []
 
 [dependency-groups]
