@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import matplotlib
 
@@ -31,6 +32,9 @@ matplotlib.use("Agg")  # non-interactive backend for PDF generation
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 from gnss.mc_validation import (
     MCValidationConfig,
@@ -64,7 +68,7 @@ _SCENARIO_LABELS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def _plot_roc(ax: plt.Axes, result: MCValidationResult) -> None:
+def _plot_roc(ax: Axes, result: MCValidationResult) -> None:
     """Plot ROC curves (P_D = 1 − P_miss vs P_fa) on ``ax``."""
     for name, sr in result.scenarios().items():
         det = sr.det
@@ -96,7 +100,7 @@ def _plot_roc(ax: plt.Axes, result: MCValidationResult) -> None:
     ax.grid(True, alpha=0.3)
 
 
-def _plot_det(ax: plt.Axes, result: MCValidationResult) -> None:
+def _plot_det(ax: Axes, result: MCValidationResult) -> None:
     """Plot DET curves (P_miss vs P_fa, log-log) on ``ax``."""
     for name, sr in result.scenarios().items():
         det = sr.det
@@ -135,7 +139,7 @@ def _plot_det(ax: plt.Axes, result: MCValidationResult) -> None:
     ax.grid(True, which="both", alpha=0.3)
 
 
-def _plot_summary_table(ax: plt.Axes, result: MCValidationResult) -> None:
+def _plot_summary_table(ax: Axes, result: MCValidationResult) -> None:
     """Render a text summary table on ``ax``."""
     ax.axis("off")
 
