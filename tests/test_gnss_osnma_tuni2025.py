@@ -87,8 +87,7 @@ def tuni2025_path(request: pytest.FixtureRequest) -> Path:
     path = _dataset_path(request)
     if path is None or not path.exists():
         pytest.skip(
-            "Tuni2025 dataset not found. "
-            "Set TUNI2025_PATH env var or --tuni2025-path=<file.csv>"
+            "Tuni2025 dataset not found. Set TUNI2025_PATH env var or --tuni2025-path=<file.csv>"
         )
     return path
 
@@ -118,9 +117,7 @@ def _load_tuni2025_pages(csv_path: Path) -> Iterator[OSNMAPage]:
         if reader.fieldnames is None:
             return
         # Normalise column names to lower-case
-        norm: dict[str, str] = {
-            k.lower().strip(): k for k in reader.fieldnames if k
-        }
+        norm: dict[str, str] = {k.lower().strip(): k for k in reader.fieldnames if k}
 
         def col(name: str) -> str:
             for key in [name, name.replace("_", ""), name + "s"]:
@@ -241,9 +238,7 @@ class TestTuni2025Integration:
         assert len(svids) > 0
         assert all(1 <= s <= 36 for s in svids)
 
-    def test_crc_passed_pages_have_valid_osnma_length(
-        self, tuni2025_path: Path
-    ) -> None:
+    def test_crc_passed_pages_have_valid_osnma_length(self, tuni2025_path: Path) -> None:
         """All CRC-passed pages have 5-byte OSNMA fields."""
         for page in _load_tuni2025_pages(tuni2025_path):
             if page.crc_ok:
@@ -259,17 +254,13 @@ class TestTuni2025Integration:
                 accumulators[page.svid] = INavAccumulator(svid=page.svid)
             result = accumulators[page.svid].add_page(page)
             if result is not None:
-                subframe_counts[page.svid] = (
-                    subframe_counts.get(page.svid, 0) + 1
-                )
+                subframe_counts[page.svid] = subframe_counts.get(page.svid, 0) + 1
 
         assert len(subframe_counts) > 0, (
             "No complete subframes emitted — dataset may have < 15 pages per SVID"
         )
 
-    def test_dsm_kroot_assembles_for_at_least_one_svid(
-        self, tuni2025_path: Path
-    ) -> None:
+    def test_dsm_kroot_assembles_for_at_least_one_svid(self, tuni2025_path: Path) -> None:
         """DSM-KROOT completes (all 14 blocks received) for ≥ 1 SVID."""
         accumulators: dict[int, INavAccumulator] = {}
 
@@ -278,17 +269,13 @@ class TestTuni2025Integration:
                 accumulators[page.svid] = INavAccumulator(svid=page.svid)
             accumulators[page.svid].add_page(page)
 
-        completed_any = any(
-            len(acc.completed_dsm()) > 0 for acc in accumulators.values()
-        )
+        completed_any = any(len(acc.completed_dsm()) > 0 for acc in accumulators.values())
         assert completed_any, (
             "No DSM-KROOT completed — dataset may be too short "
             "(need ≥ 14 subframes = ~7 minutes of data)"
         )
 
-    def test_kroot_authentication_with_engine(
-        self, tuni2025_path: Path
-    ) -> None:
+    def test_kroot_authentication_with_engine(self, tuni2025_path: Path) -> None:
         """INavOSNMAEngine authenticates ≥ 1 SVID after full dataset run."""
         accumulators: dict[int, INavAccumulator] = {}
         dsm_cache: dict[int, ParsedHkroot] = {}  # dsm_id → ParsedHkroot
@@ -320,9 +307,7 @@ class TestTuni2025Integration:
                     engine = INavOSNMAEngine(
                         kroot=parsed_kroot.kroot,
                         kroot_idx=kroot_idx,
-                        gst_start=gst_to_seconds_total(
-                            parsed_kroot.wn_k, parsed_kroot.tow_k
-                        ),
+                        gst_start=gst_to_seconds_total(parsed_kroot.wn_k, parsed_kroot.tow_k),
                         alpha=parsed_kroot.alpha,
                     )
 
@@ -341,8 +326,7 @@ class TestTuni2025Integration:
         n_auth = sum(auth_flags)
 
         assert n_auth > 0, (
-            f"No SVIDs authenticated after full dataset run "
-            f"({len(active_svids)} SVIDs checked)"
+            f"No SVIDs authenticated after full dataset run ({len(active_svids)} SVIDs checked)"
         )
 
     def test_no_prn_outside_galileo_range(self, tuni2025_path: Path) -> None:

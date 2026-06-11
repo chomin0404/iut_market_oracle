@@ -170,13 +170,9 @@ class DsmKroot:
             ValueError: if block_id is out of range or data is the wrong length.
         """
         if not 0 <= block_id < DSM_BLOCKS_PER_MESSAGE:
-            raise ValueError(
-                f"block_id {block_id} out of range [0, {DSM_BLOCKS_PER_MESSAGE})"
-            )
+            raise ValueError(f"block_id {block_id} out of range [0, {DSM_BLOCKS_PER_MESSAGE})")
         if len(data) != DSM_BLOCK_BITS // 8:
-            raise ValueError(
-                f"Expected {DSM_BLOCK_BITS // 8} bytes, got {len(data)}"
-            )
+            raise ValueError(f"Expected {DSM_BLOCK_BITS // 8} bytes, got {len(data)}")
         self._blocks[block_id] = data
 
     def is_complete(self) -> bool:
@@ -195,9 +191,7 @@ class DsmKroot:
         """
         if not self.is_complete():
             missing = self.missing_blocks()
-            raise RuntimeError(
-                f"DSM_ID={self.dsm_id} is incomplete: missing blocks {missing}"
-            )
+            raise RuntimeError(f"DSM_ID={self.dsm_id} is incomplete: missing blocks {missing}")
         return b"".join(self._blocks[i] for i in range(DSM_BLOCKS_PER_MESSAGE))
 
 
@@ -264,9 +258,7 @@ def parse_hkroot_section(data: bytes) -> HkrootSection:
     """
     expected_bytes = HKROOT_BITS // 8
     if len(data) != expected_bytes:
-        raise ValueError(
-            f"Expected {expected_bytes} bytes for HKROOT, got {len(data)}"
-        )
+        raise ValueError(f"Expected {expected_bytes} bytes for HKROOT, got {len(data)}")
     r = BitReader(data)
 
     # NMA_H (16 bits)
@@ -318,9 +310,7 @@ def parse_dsm_kroot(
     """
     expected_bytes = DSM_TOTAL_BITS // 8
     if len(dsm_payload) != expected_bytes:
-        raise ValueError(
-            f"Expected {expected_bytes} bytes for DSM-KROOT, got {len(dsm_payload)}"
-        )
+        raise ValueError(f"Expected {expected_bytes} bytes for DSM-KROOT, got {len(dsm_payload)}")
     r = BitReader(dsm_payload)
 
     nb_dk = r.read_uint(4)

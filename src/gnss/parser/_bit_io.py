@@ -96,13 +96,9 @@ class BitReader:
             EOFError:   if fewer than ``n * 8`` bits remain.
         """
         if self._pos & 7:
-            raise ValueError(
-                f"read_bytes requires byte alignment (position={self._pos})"
-            )
+            raise ValueError(f"read_bytes requires byte alignment (position={self._pos})")
         if self._pos + n * 8 > self._total_bits:
-            raise EOFError(
-                f"Cannot read {n} bytes: only {self.remaining} bits remain"
-            )
+            raise EOFError(f"Cannot read {n} bytes: only {self.remaining} bits remain")
         start = self._pos >> 3
         self._pos += n * 8
         return self._data[start : start + n]
@@ -117,9 +113,7 @@ class BitReader:
             EOFError: if fewer than ``n`` bits remain.
         """
         if self._pos + n > self._total_bits:
-            raise EOFError(
-                f"Cannot skip {n} bits: only {self.remaining} remain"
-            )
+            raise EOFError(f"Cannot skip {n} bits: only {self.remaining} remain")
         self._pos += n
 
     def seek(self, pos: int) -> None:
@@ -132,9 +126,7 @@ class BitReader:
             ValueError: if ``pos`` is out of ``[0, total_bits]``.
         """
         if pos < 0 or pos > self._total_bits:
-            raise ValueError(
-                f"Seek position {pos} out of range [0, {self._total_bits}]"
-            )
+            raise ValueError(f"Seek position {pos} out of range [0, {self._total_bits}]")
         self._pos = pos
 
     def peek_uint(self, n: int) -> int:

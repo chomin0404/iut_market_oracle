@@ -64,9 +64,9 @@ _CROSS_TAG_PRN_BITS: int = 8  # PRN_A (8 bits)
 _CROSS_TAG_INFO_BITS: int = 8  # ADKD_k[4b] + COP_k[4b]
 
 # ADKD codes (per ICD §5.4.1)
-ADKD_INAV_CED: int = 0   # I/NAV clock & ephemeris data
+ADKD_INAV_CED: int = 0  # I/NAV clock & ephemeris data
 ADKD_INAV_TIMING: int = 4  # I/NAV timing parameters
-ADKD_SLOW_MAC: int = 12   # slow MAC (cross-constellation)
+ADKD_SLOW_MAC: int = 12  # slow MAC (cross-constellation)
 
 
 # ---------------------------------------------------------------------------
@@ -151,13 +151,9 @@ def parse_mack_section(
     """
     expected_bytes = MACK_BITS // 8
     if len(data) != expected_bytes:
-        raise ValueError(
-            f"Expected {expected_bytes} bytes for MACK, got {len(data)}"
-        )
+        raise ValueError(f"Expected {expected_bytes} bytes for MACK, got {len(data)}")
     if tag_size_bits % 8 != 0:
-        raise ValueError(
-            f"tag_size_bits={tag_size_bits}: partial-byte tags are not supported"
-        )
+        raise ValueError(f"tag_size_bits={tag_size_bits}: partial-byte tags are not supported")
     tag_bytes = tag_size_bits // 8
     key_bytes = key_size_bits // 8
 
