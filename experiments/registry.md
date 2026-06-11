@@ -24,3 +24,4 @@
 | exp-013 | DCF report — 2026-06-09 | 2026-06-09 11:47 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
 | exp-014 | DCF report — 2026-06-09 | 2026-06-09 12:16 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
 | exp-015 | DCF report — 2026-06-10 | 2026-06-10 11:06 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
+| exp-016 | DCF report — 2026-06-10 | 2026-06-10 11:53 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
