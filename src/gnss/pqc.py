@@ -1,5 +1,12 @@
 """Post-quantum cryptography primitives for GNSS OSNMA authentication.
 
+.. warning::
+    RESEARCH AND EDUCATIONAL USE ONLY.
+    This implementation has NOT been independently security-audited and MUST NOT
+    be used in production systems or for the protection of real GNSS data.
+    The Ring-LWE parameters and NTT routines are simplified for research purposes
+    and do not meet the full security requirements of NIST PQC standards (e.g. CRYSTALS-Dilithium).
+
 Provides:
     RLWEAuthority          — Ring-LWE Lyubashevsky root-key signing authority.
                              Drop-in replacement for OSNMAAuthority.

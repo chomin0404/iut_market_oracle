@@ -46,7 +46,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
-from experiments.tracker import create_experiment, update_experiment
+from experiments.tracker import create_experiment, list_experiments, update_experiment
 from schemas import ScenarioResult
 from valuation.scenario import load_assumption_yaml, run_scenario
 
@@ -269,18 +269,28 @@ def run_report(
     if not results:
         raise FileNotFoundError(f"No scenario YAML files found in {scenario_dir}")
 
-    # 2. Register experiment (get the ID before writing files)
+    # 2. Register experiment (get the ID before writing files).
+    #    Guard against duplicate entries when `make report` is re-run on the
+    #    same day: reuse the existing experiment if the title already exists.
     base_result = next((r for r in results if r.scenario_name == "base"), results[0])
-    meta = create_experiment(
-        title=f"DCF report — {generated_at.strftime('%Y-%m-%d')}",
-        config_path=str(scenario_dir),
-        tags=["dcf", "report", "automated"],
-        summary=(
-            f"Automated report: {len(results)} scenarios. "
-            f"Base EV = {base_result.value:,.0f} JPY millions."
-        ),
-        experiments_root=experiments_root,
+    exp_title = f"DCF report — {generated_at.strftime('%Y-%m-%d')}"
+    existing = next(
+        (e for e in list_experiments(experiments_root) if e.title == exp_title),
+        None,
     )
+    if existing is not None:
+        meta = existing
+    else:
+        meta = create_experiment(
+            title=exp_title,
+            config_path=str(scenario_dir),
+            tags=["dcf", "report", "automated"],
+            summary=(
+                f"Automated report: {len(results)} scenarios. "
+                f"Base EV = {base_result.value:,.0f} JPY millions."
+            ),
+            experiments_root=experiments_root,
+        )
 
     # 3. Create output directory for this run
     out_dir = reports_dir / meta.experiment_id

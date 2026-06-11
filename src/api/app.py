@@ -190,14 +190,22 @@ app = FastAPI(
 )
 
 # ---------------------------------------------------------------------------
-# CORS — allow all origins by default; restrict via CORS_ORIGINS env var.
-# Example: CORS_ORIGINS="https://myapp.example.com,https://staging.example.com"
+# CORS — default: localhost only.  Set CORS_ORIGINS to restrict or expand.
+# Production example: CORS_ORIGINS="https://myapp.example.com,https://staging.example.com"
+# Dev wildcard (insecure): CORS_ORIGINS="*"
 # ---------------------------------------------------------------------------
 
-_raw_origins = os.environ.get("CORS_ORIGINS", "*")
+_raw_origins = os.environ.get("CORS_ORIGINS", "http://localhost:8000")
 _allow_origins: list[str] = (
     ["*"] if _raw_origins == "*" else [o.strip() for o in _raw_origins.split(",") if o.strip()]
 )
+
+if _raw_origins == "*":
+    _log.warning(
+        "CORS_ORIGINS is set to '*' — all origins are permitted. "
+        "Set CORS_ORIGINS to a comma-separated list of explicit origins "
+        "before deploying to production."
+    )
 
 app.add_middleware(
     CORSMiddleware,

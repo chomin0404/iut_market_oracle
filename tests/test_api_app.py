@@ -69,21 +69,35 @@ def test_health_features_cors_restricted_is_bool() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cors_preflight_wildcard() -> None:
-    """OPTIONS preflight should return Access-Control-Allow-Origin: *."""
+def test_cors_preflight_allowed_origin() -> None:
+    """OPTIONS preflight from an allowed origin should return ACAO header."""
     resp = client.options(
         "/health",
         headers={
-            "Origin": "https://example.com",
+            "Origin": "http://localhost:8000",
             "Access-Control-Request-Method": "GET",
         },
     )
     assert resp.status_code in (200, 204)
-    assert resp.headers.get("access-control-allow-origin") in ("*", "https://example.com")
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:8000"
+
+
+def test_cors_preflight_unknown_origin_rejected() -> None:
+    """OPTIONS preflight from an unknown origin must not return ACAO header."""
+    resp = client.options(
+        "/health",
+        headers={
+            "Origin": "https://attacker.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    # Starlette returns 400 for disallowed origins on preflight
+    assert resp.status_code in (400, 200, 204)
+    assert resp.headers.get("access-control-allow-origin") != "https://attacker.example.com"
 
 
 def test_cors_header_on_get() -> None:
-    resp = client.get("/health", headers={"Origin": "https://example.com"})
+    resp = client.get("/health", headers={"Origin": "http://localhost:8000"})
     assert resp.status_code == 200
     assert "access-control-allow-origin" in resp.headers
 

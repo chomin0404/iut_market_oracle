@@ -14,7 +14,6 @@ class ClaimTag(str, Enum):
     PROVEN = "proven"
     HEURISTIC = "heuristic"
     EMPIRICAL = "empirical"
-    TODO = "todo"
 
 
 class EvidenceKind(str, Enum):

@@ -17,6 +17,7 @@ Resilience Twin — 4-layer fault discrimination (flagship, T1500):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import Counter
 
@@ -230,7 +231,7 @@ def detect(req: DetectRequest) -> DetectResponse:
 
 
 @router.post("/spoof-sim", response_model=MCSimReport)
-def spoof_sim(req: SpooferSimRequest) -> MCSimReport:
+async def spoof_sim(req: SpooferSimRequest) -> MCSimReport:
     """Monte Carlo GNSS signal-level spoofing detection simulation (T1300).
 
     Simulates M independent runs of T epochs each.  In each run:
@@ -246,24 +247,28 @@ def spoof_sim(req: SpooferSimRequest) -> MCSimReport:
 
     Returns ROC curve, AUC, detection delay, and PVT degradation statistics.
     """
-    try:
-        config = SimConfig(
-            n_mc=req.n_mc,
-            n_epochs=req.n_epochs,
-            n_sats=req.n_sats,
-            dirichlet_alpha=req.dirichlet_alpha,
-            doppler_noise_std=req.doppler_noise_std,
-            spoof_bias_std=req.spoof_bias_std,
-            spoof_diff_std=req.spoof_diff_std,
-            graph_sigma=req.graph_sigma,
-            false_alarm_rate=req.false_alarm_rate,
-            subset_size=req.subset_size,
-            random_seed=req.random_seed,
-        )
-        return run_mc_simulation(config)
-    except ValueError as e:
-        _logger.warning("%s", e, exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+
+    def _run() -> MCSimReport:
+        try:
+            config = SimConfig(
+                n_mc=req.n_mc,
+                n_epochs=req.n_epochs,
+                n_sats=req.n_sats,
+                dirichlet_alpha=req.dirichlet_alpha,
+                doppler_noise_std=req.doppler_noise_std,
+                spoof_bias_std=req.spoof_bias_std,
+                spoof_diff_std=req.spoof_diff_std,
+                graph_sigma=req.graph_sigma,
+                false_alarm_rate=req.false_alarm_rate,
+                subset_size=req.subset_size,
+                random_seed=req.random_seed,
+            )
+            return run_mc_simulation(config)
+        except ValueError as e:
+            _logger.warning("%s", e, exc_info=True)
+            raise HTTPException(status_code=400, detail=str(e))
+
+    return await asyncio.to_thread(_run)
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +277,7 @@ def spoof_sim(req: SpooferSimRequest) -> MCSimReport:
 
 
 @router.post("/multi-sensor-sim", response_model=MSSimReport)
-def multi_sensor_sim(req: MultiSensorSimRequest) -> MSSimReport:
+async def multi_sensor_sim(req: MultiSensorSimRequest) -> MSSimReport:
     """Monte Carlo multi-sensor GNSS spoofing detection simulation (T1350).
 
     Sensors fused per epoch:
@@ -290,31 +295,35 @@ def multi_sensor_sim(req: MultiSensorSimRequest) -> MSSimReport:
 
     Returns ROC curve, AUC, detection delay statistics, and per-run traces.
     """
-    try:
-        config = MultiSensorConfig(
-            T=req.T,
-            dt=req.dt,
-            n_sat=req.n_sat,
-            attack_start=req.attack_start,
-            attack_end=req.attack_end,
-            capture_len=req.capture_len,
-            n_nominal=req.n_nominal,
-            n_attack=req.n_attack,
-            noise_pr=req.noise_pr,
-            noise_dopp=req.noise_dopp,
-            noise_aoa=req.noise_aoa,
-            noise_ins=req.noise_ins,
-            carryoff_rate=req.carryoff_rate,
-            spoof_aoa_center=req.spoof_aoa_center,
-            score_weights=req.score_weights,
-            detect_threshold=req.detect_threshold,
-            hazard_pos=req.hazard_pos,
-            random_seed=req.random_seed,
-        )
-        return run_ms_simulation(config)
-    except ValueError as e:
-        _logger.warning("%s", e, exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+
+    def _run() -> MSSimReport:
+        try:
+            config = MultiSensorConfig(
+                T=req.T,
+                dt=req.dt,
+                n_sat=req.n_sat,
+                attack_start=req.attack_start,
+                attack_end=req.attack_end,
+                capture_len=req.capture_len,
+                n_nominal=req.n_nominal,
+                n_attack=req.n_attack,
+                noise_pr=req.noise_pr,
+                noise_dopp=req.noise_dopp,
+                noise_aoa=req.noise_aoa,
+                noise_ins=req.noise_ins,
+                carryoff_rate=req.carryoff_rate,
+                spoof_aoa_center=req.spoof_aoa_center,
+                score_weights=req.score_weights,
+                detect_threshold=req.detect_threshold,
+                hazard_pos=req.hazard_pos,
+                random_seed=req.random_seed,
+            )
+            return run_ms_simulation(config)
+        except ValueError as e:
+            _logger.warning("%s", e, exc_info=True)
+            raise HTTPException(status_code=400, detail=str(e))
+
+    return await asyncio.to_thread(_run)
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +332,7 @@ def multi_sensor_sim(req: MultiSensorSimRequest) -> MSSimReport:
 
 
 @router.post("/resilience-sim", response_model=ResilienceTwinReport)
-def resilience_sim(req: ResilienceSimRequest) -> ResilienceTwinReport:
+async def resilience_sim(req: ResilienceSimRequest) -> ResilienceTwinReport:
     """GNSS Resilience Twin Monte Carlo simulation — 4-layer fault discrimination (T1500).
 
     Runs `n_mc` trials cycling through 4 fault classes:
@@ -346,22 +355,26 @@ def resilience_sim(req: ResilienceSimRequest) -> ResilienceTwinReport:
     Returns a 4-class confusion matrix, per-class accuracy, binary ROC/AUC,
     detection/false-alarm rates at threshold 0.5, and mean epoch confidence.
     """
-    try:
-        config = ResilienceTwinConfig(
-            n_mc=req.n_mc,
-            n_epochs=req.n_epochs,
-            n_sats=req.n_sats,
-            doppler_noise_std=req.doppler_noise_std,
-            spoof_bias_std=req.spoof_bias_std,
-            spoof_diff_std=req.spoof_diff_std,
-            graph_sigma=req.graph_sigma,
-            dirichlet_alpha=req.dirichlet_alpha,
-            random_seed=req.random_seed,
-        )
-        return run_resilience_simulation(config)
-    except ValueError as e:
-        _logger.warning("%s", e, exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+
+    def _run() -> ResilienceTwinReport:
+        try:
+            config = ResilienceTwinConfig(
+                n_mc=req.n_mc,
+                n_epochs=req.n_epochs,
+                n_sats=req.n_sats,
+                doppler_noise_std=req.doppler_noise_std,
+                spoof_bias_std=req.spoof_bias_std,
+                spoof_diff_std=req.spoof_diff_std,
+                graph_sigma=req.graph_sigma,
+                dirichlet_alpha=req.dirichlet_alpha,
+                random_seed=req.random_seed,
+            )
+            return run_resilience_simulation(config)
+        except ValueError as e:
+            _logger.warning("%s", e, exc_info=True)
+            raise HTTPException(status_code=400, detail=str(e))
+
+    return await asyncio.to_thread(_run)
 
 
 # ---------------------------------------------------------------------------
@@ -473,7 +486,7 @@ def _diag_to_epoch_report(diag: EpochDiagnosis) -> EpochReport:
 
 
 @router.post("/twin/run", response_model=TwinRunReport)
-def twin_run(req: TwinRunRequest) -> TwinRunReport:
+async def twin_run(req: TwinRunRequest) -> TwinRunReport:
     """GNSS Resilience Twin — probabilistic digital twin inference on real observations.
 
     Synchronises a stream of receiver observations to the virtual twin and returns
@@ -497,96 +510,102 @@ def twin_run(req: TwinRunRequest) -> TwinRunReport:
     For continuous real-time use, call this endpoint with a rolling window of recent
     epochs (e.g., 30–120 s). The twin reinitialises per request to ensure reproducibility.
     """
-    run_id = new_run_id()
 
-    try:
-        # ── Build satellite geometry ────────────────────────────────────────
-        if req.los_vectors is not None:
-            los = np.array(req.los_vectors, dtype=float)
-            # Normalise rows to unit vectors
-            norms = np.linalg.norm(los, axis=1, keepdims=True)
-            los = los / np.where(norms > 0, norms, 1.0)
-        else:
-            los = _init_constellation(req.n_sats)
+    def _run() -> TwinRunReport:
+        run_id = new_run_id()
 
-        # ── Build per-epoch arrays ──────────────────────────────────────────
-        doppler_seq: list[np.ndarray] = []
-        ins_seq: list[np.ndarray | None] = []
-        osnma_seq: list[list[bool] | None] = []
-        elevations_rad: np.ndarray | None = None  # per-epoch override (last epoch wins)
+        try:
+            # ── Build satellite geometry ────────────────────────────────────────
+            if req.los_vectors is not None:
+                los = np.array(req.los_vectors, dtype=float)
+                # Normalise rows to unit vectors
+                norms = np.linalg.norm(los, axis=1, keepdims=True)
+                los = los / np.where(norms > 0, norms, 1.0)
+            else:
+                los = _init_constellation(req.n_sats)
 
-        for obs in req.observations:
-            doppler_seq.append(np.array(obs.doppler_residuals, dtype=float))
-            if obs.elevations_deg is not None:
-                # Convert degrees → radians; use the last epoch's elevations
-                # (typically stable over short windows)
-                elevations_rad = np.deg2rad(np.array(obs.elevations_deg, dtype=float))
-            ins_seq.append(
-                np.array(obs.ins_velocity_ms, dtype=float)
-                if obs.ins_velocity_ms is not None
-                else None
+            # ── Build per-epoch arrays ──────────────────────────────────────────
+            doppler_seq: list[np.ndarray] = []
+            ins_seq: list[np.ndarray | None] = []
+            osnma_seq: list[list[bool] | None] = []
+            elevations_rad: np.ndarray | None = None  # per-epoch override (last epoch wins)
+
+            for obs in req.observations:
+                doppler_seq.append(np.array(obs.doppler_residuals, dtype=float))
+                if obs.elevations_deg is not None:
+                    # Convert degrees → radians; use the last epoch's elevations
+                    # (typically stable over short windows)
+                    elevations_rad = np.deg2rad(np.array(obs.elevations_deg, dtype=float))
+                ins_seq.append(
+                    np.array(obs.ins_velocity_ms, dtype=float)
+                    if obs.ins_velocity_ms is not None
+                    else None
+                )
+                osnma_seq.append(obs.osnma_auth_per_sat)
+
+            # ── Run the digital twin ────────────────────────────────────────────
+            epoch_diags = run_twin_on_observations(
+                doppler_sequence=doppler_seq,
+                los=los,
+                elevations=elevations_rad,
+                noise_std=req.doppler_noise_std,
+                graph_sigma=req.graph_sigma,
+                ins_sequence=ins_seq,
+                osnma_sequence=osnma_seq,
+                ins_noise_std=req.ins_noise_std,
             )
-            osnma_seq.append(obs.osnma_auth_per_sat)
 
-        # ── Run the digital twin ────────────────────────────────────────────
-        epoch_diags = run_twin_on_observations(
-            doppler_sequence=doppler_seq,
-            los=los,
-            elevations=elevations_rad,
-            noise_std=req.doppler_noise_std,
-            graph_sigma=req.graph_sigma,
-            ins_sequence=ins_seq,
-            osnma_sequence=osnma_seq,
-            ins_noise_std=req.ins_noise_std,
-        )
+            # ── Convert EpochDiagnosis → EpochReport ────────────────────────────
+            epoch_reports: list[EpochReport] = [_diag_to_epoch_report(d) for d in epoch_diags]
 
-        # ── Convert EpochDiagnosis → EpochReport ────────────────────────────
-        epoch_reports: list[EpochReport] = [_diag_to_epoch_report(d) for d in epoch_diags]
+            # ── Aggregate summary ───────────────────────────────────────────────
+            diag_counts = Counter(r.diagnosis for r in epoch_reports)
+            dominant_diagnosis = diag_counts.most_common(1)[0][0]
 
-        # ── Aggregate summary ───────────────────────────────────────────────
-        diag_counts = Counter(r.diagnosis for r in epoch_reports)
-        dominant_diagnosis = diag_counts.most_common(1)[0][0]
-
-        mean_auth = float(
-            sum(r.authenticity["genuine"] for r in epoch_reports) / len(epoch_reports)
-        )
-        mean_integ = float(sum(r.integrity["nominal"] for r in epoch_reports) / len(epoch_reports))
-        alert_epochs = [r.epoch for r in epoch_reports if r.entropy_alert]
-
-        spoof_epochs = [r.epoch for r in epoch_reports if r.fault_posterior["spoofing"] > 0.50]
-        spoofing_window = [spoof_epochs[0], spoof_epochs[-1]] if spoof_epochs else None
-
-        worst_action = max(
-            (r.recommended_action for r in epoch_reports),
-            key=lambda a: _ACTION_SEVERITY[a],
-        )
-
-        report = TwinRunReport(
-            epoch_reports=epoch_reports,
-            n_epochs=len(epoch_reports),
-            n_sats=req.n_sats,
-            dominant_diagnosis=dominant_diagnosis,
-            mean_authenticity_genuine=mean_auth,
-            mean_integrity_nominal=mean_integ,
-            alert_epochs=alert_epochs,
-            spoofing_window=spoofing_window,
-            worst_action=worst_action,
-            run_id=run_id,
-        )
-
-        if req.save:
-            result_path = _save_twin_run(
-                req.model_dump(mode="json"),
-                report.model_dump(mode="json"),
-                run_id,
+            mean_auth = float(
+                sum(r.authenticity["genuine"] for r in epoch_reports) / len(epoch_reports)
             )
-            report = report.model_copy(update={"result_path": result_path})
+            mean_integ = float(
+                sum(r.integrity["nominal"] for r in epoch_reports) / len(epoch_reports)
+            )
+            alert_epochs = [r.epoch for r in epoch_reports if r.entropy_alert]
 
-        return report
+            spoof_epochs = [r.epoch for r in epoch_reports if r.fault_posterior["spoofing"] > 0.50]
+            spoofing_window = [spoof_epochs[0], spoof_epochs[-1]] if spoof_epochs else None
 
-    except ValueError as e:
-        _logger.warning("%s", e, exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+            worst_action = max(
+                (r.recommended_action for r in epoch_reports),
+                key=lambda a: _ACTION_SEVERITY[a],
+            )
+
+            report = TwinRunReport(
+                epoch_reports=epoch_reports,
+                n_epochs=len(epoch_reports),
+                n_sats=req.n_sats,
+                dominant_diagnosis=dominant_diagnosis,
+                mean_authenticity_genuine=mean_auth,
+                mean_integrity_nominal=mean_integ,
+                alert_epochs=alert_epochs,
+                spoofing_window=spoofing_window,
+                worst_action=worst_action,
+                run_id=run_id,
+            )
+
+            if req.save:
+                result_path = _save_twin_run(
+                    req.model_dump(mode="json"),
+                    report.model_dump(mode="json"),
+                    run_id,
+                )
+                report = report.model_copy(update={"result_path": result_path})
+
+            return report
+
+        except ValueError as e:
+            _logger.warning("%s", e, exc_info=True)
+            raise HTTPException(status_code=400, detail=str(e))
+
+    return await asyncio.to_thread(_run)
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +614,7 @@ def twin_run(req: TwinRunRequest) -> TwinRunReport:
 
 
 @router.post("/ml/spoof-detect", response_model=MLSpoofDetectResponse)
-def ml_spoof_detect(req: MLSpoofDetectRequest) -> MLSpoofDetectResponse:
+async def ml_spoof_detect(req: MLSpoofDetectRequest) -> MLSpoofDetectResponse:
     """Train and evaluate an IsolationForest spoofing detector on MC-generated data.
 
     Pipeline (stateless — no model is persisted):
@@ -614,63 +633,67 @@ def ml_spoof_detect(req: MLSpoofDetectRequest) -> MLSpoofDetectResponse:
     - The calibrated threshold is also returned so callers can reproduce the result
       offline by loading a separately trained model.
     """
-    from gnss.dataset import generate_full_dataset, records_to_arrays
-    from gnss.ml_detector import IsolationForestDetector
-    from gnss.spoof_sim import SimConfig
 
-    try:
-        config = SimConfig(
-            n_epochs=req.n_epochs,
-            n_sats=req.n_sats,
-            random_seed=req.random_seed,
-        )
-        records = generate_full_dataset(config=config, n_runs=req.n_runs)
+    def _run() -> MLSpoofDetectResponse:
+        from gnss.dataset import generate_full_dataset, records_to_arrays
+        from gnss.ml_detector import IsolationForestDetector
+        from gnss.spoof_sim import SimConfig
 
-        # ── Split run IDs into train / test (order-preserving, no cross-run leakage) ──
-        all_run_ids: list[str] = list(dict.fromkeys(r["run_id"] for r in records))
-        n_train = max(1, int(len(all_run_ids) * req.train_fraction))
-        train_ids: set[str] = set(all_run_ids[:n_train])
-        test_ids: set[str] = set(all_run_ids[n_train:])
+        try:
+            config = SimConfig(
+                n_epochs=req.n_epochs,
+                n_sats=req.n_sats,
+                random_seed=req.random_seed,
+            )
+            records = generate_full_dataset(config=config, n_runs=req.n_runs)
 
-        train_recs = [r for r in records if r["run_id"] in train_ids]
-        test_recs = [r for r in records if r["run_id"] in test_ids]
+            # ── Split run IDs into train / test (order-preserving, no cross-run leakage) ──
+            all_run_ids: list[str] = list(dict.fromkeys(r["run_id"] for r in records))
+            n_train = max(1, int(len(all_run_ids) * req.train_fraction))
+            train_ids: set[str] = set(all_run_ids[:n_train])
+            test_ids: set[str] = set(all_run_ids[n_train:])
 
-        X_train, y_train = records_to_arrays(train_recs, n_sats=req.n_sats)
-        X_test, y_test = records_to_arrays(test_recs, n_sats=req.n_sats)
+            train_recs = [r for r in records if r["run_id"] in train_ids]
+            test_recs = [r for r in records if r["run_id"] in test_ids]
 
-        X_test_genuine = X_test[y_test == 0]
-        X_test_spoofed = X_test[y_test == 1]
+            X_train, y_train = records_to_arrays(train_recs, n_sats=req.n_sats)
+            X_test, y_test = records_to_arrays(test_recs, n_sats=req.n_sats)
 
-        if len(X_test_genuine) == 0 or len(X_test_spoofed) == 0:
-            raise HTTPException(
-                status_code=422,
-                detail="Insufficient test data: need both genuine and spoofed epochs.",
+            X_test_genuine = X_test[y_test == 0]
+            X_test_spoofed = X_test[y_test == 1]
+
+            if len(X_test_genuine) == 0 or len(X_test_spoofed) == 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Insufficient test data: need both genuine and spoofed epochs.",
+                )
+
+            # ── Train and calibrate ─────────────────────────────────────────────────
+            detector = IsolationForestDetector()
+            detector.fit(X_train, y_train)
+            threshold = detector.calibrate_threshold(X_test_genuine, target_far=req.target_far)
+
+            # ── Evaluate ────────────────────────────────────────────────────────────
+            alarm_genuine, _ = detector.predict(X_test_genuine)
+            alarm_spoofed, _ = detector.predict(X_test_spoofed)
+
+            return MLSpoofDetectResponse(
+                detection_rate=float(alarm_spoofed.mean()),
+                false_alarm_rate=float(alarm_genuine.mean()),
+                threshold=threshold,
+                n_train_genuine=int((y_train == 0).sum()),
+                n_train_spoofed=int((y_train == 1).sum()),
+                n_test_genuine=int(len(X_test_genuine)),
+                n_test_spoofed=int(len(X_test_spoofed)),
             )
 
-        # ── Train and calibrate ─────────────────────────────────────────────────
-        detector = IsolationForestDetector()
-        detector.fit(X_train, y_train)
-        threshold = detector.calibrate_threshold(X_test_genuine, target_far=req.target_far)
+        except HTTPException:
+            raise
+        except (ValueError, RuntimeError):
+            _logger.exception("unexpected error")
+            raise HTTPException(
+                status_code=500,
+                detail="ML detection pipeline failed due to an internal error.",
+            )
 
-        # ── Evaluate ────────────────────────────────────────────────────────────
-        alarm_genuine, _ = detector.predict(X_test_genuine)
-        alarm_spoofed, _ = detector.predict(X_test_spoofed)
-
-        return MLSpoofDetectResponse(
-            detection_rate=float(alarm_spoofed.mean()),
-            false_alarm_rate=float(alarm_genuine.mean()),
-            threshold=threshold,
-            n_train_genuine=int((y_train == 0).sum()),
-            n_train_spoofed=int((y_train == 1).sum()),
-            n_test_genuine=int(len(X_test_genuine)),
-            n_test_spoofed=int(len(X_test_spoofed)),
-        )
-
-    except HTTPException:
-        raise
-    except (ValueError, RuntimeError):
-        _logger.exception("unexpected error")
-        raise HTTPException(
-            status_code=500,
-            detail="ML detection pipeline failed due to an internal error.",
-        )
+    return await asyncio.to_thread(_run)
