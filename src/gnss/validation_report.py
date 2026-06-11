@@ -31,12 +31,10 @@ matplotlib.use("Agg")  # non-interactive backend for PDF generation
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.lines import Line2D
 
 from gnss.mc_validation import (
     MCValidationConfig,
     MCValidationResult,
-    ScenarioResult,
     SpoofingScenario,
     run_mc_validation,
 )
@@ -49,8 +47,8 @@ DEFAULT_OUTPUT_PATH: str = "output/validation_report.pdf"
 DEFAULT_N_TRIALS: int = 1_000_000
 
 _SCENARIO_COLORS: dict[str, str] = {
-    SpoofingScenario.SIMPLISTIC.value: "#1f77b4",     # blue
-    SpoofingScenario.MEACONING.value: "#ff7f0e",      # orange
+    SpoofingScenario.SIMPLISTIC.value: "#1f77b4",  # blue
+    SpoofingScenario.MEACONING.value: "#ff7f0e",  # orange
     SpoofingScenario.SOPHISTICATED.value: "#2ca02c",  # green
 }
 
@@ -163,7 +161,6 @@ def _plot_summary_table(ax: plt.Axes, result: MCValidationResult) -> None:
             ]
         )
 
-    table_data = [headers] + rows
     table = ax.table(
         cellText=rows,
         colLabels=headers,
@@ -262,9 +259,7 @@ def generate_validation_report(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Generate GNSS MC validation PDF report."
-    )
+    parser = argparse.ArgumentParser(description="Generate GNSS MC validation PDF report.")
     parser.add_argument(
         "--out",
         default=DEFAULT_OUTPUT_PATH,

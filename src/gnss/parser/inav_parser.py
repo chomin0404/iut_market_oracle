@@ -47,11 +47,9 @@ from gnss.parser.hkroot_parser import (
 )
 from gnss.parser.mack_parser import MACK_BITS, ParsedMack, parse_mack_section
 from gnss.utils.gst_utils import (
-    SUBFRAME_DURATION_S,
     pack_gst,
     subframe_aligned_gst,
     subframe_index,
-    unpack_gst,
 )
 
 # ---------------------------------------------------------------------------
@@ -110,15 +108,12 @@ class OSNMAPage:
     def __post_init__(self) -> None:
         if len(self.osnma_bits) != OSNMA_BYTES_PER_PAGE:
             raise ValueError(
-                f"osnma_bits must be {OSNMA_BYTES_PER_PAGE} bytes, "
-                f"got {len(self.osnma_bits)}"
+                f"osnma_bits must be {OSNMA_BYTES_PER_PAGE} bytes, got {len(self.osnma_bits)}"
             )
         if not 1 <= self.svid <= 36:
             raise ValueError(f"SVID {self.svid} out of range [1, 36]")
         if not 0 <= self.page_idx < PAGES_PER_SUBFRAME:
-            raise ValueError(
-                f"page_idx {self.page_idx} out of range [0, {PAGES_PER_SUBFRAME})"
-            )
+            raise ValueError(f"page_idx {self.page_idx} out of range [0, {PAGES_PER_SUBFRAME})")
 
 
 # ---------------------------------------------------------------------------
@@ -215,9 +210,7 @@ class INavAccumulator:
             ValueError: if page.svid does not match this accumulator.
         """
         if page.svid != self._svid:
-            raise ValueError(
-                f"Page SVID {page.svid} does not match accumulator SVID {self._svid}"
-            )
+            raise ValueError(f"Page SVID {page.svid} does not match accumulator SVID {self._svid}")
         if not page.crc_ok:
             return None  # discard pages with CRC errors
 
@@ -248,9 +241,7 @@ class INavAccumulator:
     def _assemble_subframe(self, wn_sf: int, tow_sf: int) -> DecodedSubframe:
         """Assemble the 600-bit OSNMA block and decode HKROOT + MACK."""
         # Concatenate pages 0-14 in order
-        raw_600 = b"".join(
-            self._page_buf[i] for i in range(PAGES_PER_SUBFRAME)
-        )
+        raw_600 = b"".join(self._page_buf[i] for i in range(PAGES_PER_SUBFRAME))
 
         # Split: HKROOT = bits 0-103 (13 bytes), MACK = bits 104-599 (62 bytes)
         hkroot_bytes = _extract_bits(raw_600, 0, HKROOT_BITS)
