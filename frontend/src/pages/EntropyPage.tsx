@@ -1,3 +1,14 @@
+/**
+ * EntropyPage — POST /api/v1/entropy/detect
+ *
+ * The entropy endpoint takes a sequence of PosteriorSummary objects
+ * (Bayesian posteriors over time) and computes Shannon entropy, KL divergence
+ * from the prior, and entropy rate for each step.
+ *
+ * UI: user defines a prior + number of epochs.  Two synthetic regimes are
+ * generated automatically — a stable regime followed by a shifted regime —
+ * so the change-point detection can be demonstrated without real data.
+ */
 import { useState } from "react";
 import {
   LineChart,
@@ -10,65 +21,65 @@ import {
   Legend,
 } from "recharts";
 import { postEntropyDetect } from "../api";
-import type { EntropyReport } from "../types";
+import type { EntropyReport, PosteriorSummary } from "../types";
+import {
+  Card,
+  SectionLabel,
+  Field,
+  Input,
+  Select,
+  Button,
+  ErrorBox,
+  StatCard,
+  StatsRow,
+  PageHeading,
+  FormGrid,
+} from "../components/ui";
+import { colors, spacing } from "../styles/tokens";
 
-const CARD = {
-  background: "#161616",
-  border: "1px solid #2a2a2a",
-  borderRadius: 8,
-  padding: 20,
-  marginBottom: 16,
-} as const;
+// ---- Synthetic posterior generator ----
 
-const INPUT_STYLE = {
-  background: "#111",
-  border: "1px solid #333",
-  borderRadius: 4,
-  color: "#e0e0e0",
-  padding: "6px 10px",
-  fontSize: 13,
-  width: "100%",
-  fontFamily: "inherit",
-  boxSizing: "border-box" as const,
-};
-
-const BTN_STYLE = {
-  background: "#a78bfa",
-  color: "#000",
-  border: "none",
-  borderRadius: 4,
-  padding: "8px 20px",
-  fontSize: 13,
-  fontWeight: 700,
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>{label}</div>
-      {children}
-    </div>
-  );
-}
-
-// Default synthetic time series — random walk with a regime shift around index 60
-function generateDefaultSeries(): string {
-  const series: number[] = [];
-  let val = 0;
-  for (let i = 0; i < 100; i++) {
-    val += (Math.random() - 0.5) * 0.5;
-    if (i >= 60) val += 0.08; // regime shift
-    series.push(parseFloat(val.toFixed(4)));
+/**
+ * Generate a sequence of PosteriorSummary objects with a simulated regime shift.
+ *   - Epochs 0 … shiftAt-1: posteriors close to the prior (stable regime)
+ *   - Epochs shiftAt … n-1: posteriors drifted by `drift` (shifted regime)
+ */
+function generateSyntheticPosteriors(
+  nEpochs: number,
+  shiftAt: number,
+  priorMu: number,
+  priorSigma: number,
+  drift: number
+): PosteriorSummary[] {
+  const posteriors: PosteriorSummary[] = [];
+  for (let i = 0; i < nEpochs; i++) {
+    const inShift = i >= shiftAt;
+    const mean = priorMu + (inShift ? drift : 0) + (Math.random() - 0.5) * priorSigma * 0.3;
+    const variance = Math.max(1e-6, priorSigma * priorSigma * (inShift ? 0.5 : 1.0));
+    const halfWidth = 1.96 * Math.sqrt(variance);
+    posteriors.push({
+      mean,
+      variance,
+      credible_interval_95: [mean - halfWidth, mean + halfWidth],
+      n_evidence: i + 1,
+      updated_at: new Date(Date.now() + i * 1000).toISOString(),
+    });
   }
-  return series.join(",");
+  return posteriors;
 }
+
+// ---- Page ----
 
 export function EntropyPage() {
-  const [seriesInput, setSeriesInput] = useState(() => generateDefaultSeries());
-  const [window_, setWindow] = useState("10");
-  const [threshold, setThreshold] = useState("0.5");
+  const [distribution, setDistribution] = useState("normal");
+  const [priorMu, setPriorMu] = useState("0.05");
+  const [priorSigma, setPriorSigma] = useState("0.02");
+  const [nEpochs, setNEpochs] = useState("50");
+  const [shiftAt, setShiftAt] = useState("30");
+  const [drift, setDrift] = useState("0.08");
+  const [klThreshold, setKlThreshold] = useState("0.5");
+  const [gradThreshold, setGradThreshold] = useState("0.1");
+  const [rollingWindow, setRollingWindow] = useState("3");
   const [experimentId, setExperimentId] = useState("exp-001");
 
   const [report, setReport] = useState<EntropyReport | null>(null);
@@ -79,17 +90,28 @@ export function EntropyPage() {
     setLoading(true);
     setErr(null);
     try {
-      const series = seriesInput
-        .split(",")
-        .map((v) => parseFloat(v.trim()))
-        .filter((v) => !isNaN(v));
-      const result = await postEntropyDetect({
-        series,
-        window: parseInt(window_, 10),
-        threshold: parseFloat(threshold),
+      const mu = parseFloat(priorMu);
+      const sigma = parseFloat(priorSigma);
+      const posteriors = generateSyntheticPosteriors(
+        parseInt(nEpochs, 10),
+        parseInt(shiftAt, 10),
+        mu,
+        sigma,
+        parseFloat(drift)
+      );
+      const prior = {
+        distribution,
+        params: (distribution === "beta" ? { alpha: mu, beta: sigma } : { mu, sigma }) as Record<string, number>,
+      };
+      const res = await postEntropyDetect({
+        posteriors,
+        prior,
         experiment_id: experimentId,
+        kl_threshold: parseFloat(klThreshold),
+        entropy_gradient_threshold: parseFloat(gradThreshold),
+        rolling_window: parseInt(rollingWindow, 10),
       });
-      setReport(result);
+      setReport(res);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -97,161 +119,153 @@ export function EntropyPage() {
     }
   }
 
-  // Build chart data — align all series by index
-  const chartData = report
-    ? report.entropy_series.map((h, i) => ({
-        t: i,
-        entropy: parseFloat(h.toFixed(4)),
-        kl: report.kl_series[i] !== undefined ? parseFloat(report.kl_series[i].toFixed(4)) : null,
-        rate:
-          report.entropy_rate_series[i] !== undefined
-            ? parseFloat(report.entropy_rate_series[i].toFixed(4))
-            : null,
-      }))
-    : [];
+  const chartData =
+    report?.entropy_series.map((h, i) => ({
+      t: i,
+      entropy: parseFloat(h.toFixed(5)),
+      kl: report.kl_series[i] !== undefined ? parseFloat(report.kl_series[i].toFixed(5)) : null,
+      rate:
+        report.entropy_rate_series[i] !== undefined
+          ? parseFloat(report.entropy_rate_series[i].toFixed(5))
+          : null,
+    })) ?? [];
 
-  // Alert epoch indices
   const alertEpochs = new Set(report?.alerts.map((a) => a.triggered_at) ?? []);
 
   return (
     <div>
-      <h2
-        style={{ color: "#fff", fontSize: 18, fontWeight: 700, margin: "0 0 20px", letterSpacing: 1 }}
-      >
-        Entropy Monitor — T1000
-      </h2>
+      <PageHeading subtitle="T1000 — Shannon entropy, KL divergence, entropy rate on Bayesian posterior sequences">
+        Entropy Monitor
+      </PageHeading>
 
-      <div style={CARD}>
-        <div
-          style={{ color: "#a78bfa", fontSize: 12, fontWeight: 600, marginBottom: 14, letterSpacing: 1 }}
-        >
-          INPUT CONFIGURATION
-        </div>
-
-        <div
-          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}
-        >
-          <Field label="Window size">
-            <input style={INPUT_STYLE} value={window_} onChange={(e) => setWindow(e.target.value)} />
+      <Card>
+        <SectionLabel color={colors.accent.purple}>PRIOR &amp; SIMULATION PARAMETERS</SectionLabel>
+        <FormGrid>
+          <Field label="Prior distribution">
+            <Select value={distribution} onChange={(e) => setDistribution(e.target.value)}>
+              <option value="normal">Normal</option>
+              <option value="beta">Beta</option>
+            </Select>
           </Field>
-          <Field label="Alert threshold">
-            <input style={INPUT_STYLE} value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+          <Field label={distribution === "beta" ? "Alpha (α)" : "Prior mean (μ)"}>
+            <Input value={priorMu} onChange={(e) => setPriorMu(e.target.value)} />
+          </Field>
+          <Field label={distribution === "beta" ? "Beta (β)" : "Prior std (σ)"}>
+            <Input value={priorSigma} onChange={(e) => setPriorSigma(e.target.value)} />
+          </Field>
+          <Field label="Total epochs">
+            <Input type="number" min={5} max={500} value={nEpochs} onChange={(e) => setNEpochs(e.target.value)} />
+          </Field>
+          <Field label="Regime shift at epoch">
+            <Input type="number" min={1} value={shiftAt} onChange={(e) => setShiftAt(e.target.value)} />
+          </Field>
+          <Field label="Shift drift magnitude">
+            <Input value={drift} onChange={(e) => setDrift(e.target.value)} />
+          </Field>
+        </FormGrid>
+
+        <SectionLabel color={colors.accent.purple}>DETECTION THRESHOLDS</SectionLabel>
+        <FormGrid>
+          <Field label="KL threshold">
+            <Input value={klThreshold} onChange={(e) => setKlThreshold(e.target.value)} />
+          </Field>
+          <Field label="Entropy gradient threshold">
+            <Input value={gradThreshold} onChange={(e) => setGradThreshold(e.target.value)} />
+          </Field>
+          <Field label="Rolling window">
+            <Input type="number" min={1} value={rollingWindow} onChange={(e) => setRollingWindow(e.target.value)} />
           </Field>
           <Field label="Experiment ID">
-            <input
-              style={INPUT_STYLE}
-              value={experimentId}
-              onChange={(e) => setExperimentId(e.target.value)}
-            />
+            <Input value={experimentId} onChange={(e) => setExperimentId(e.target.value)} />
           </Field>
-        </div>
+        </FormGrid>
 
-        <Field label="Time series (comma-separated floats)">
-          <textarea
-            style={{ ...INPUT_STYLE, height: 80, resize: "vertical" }}
-            value={seriesInput}
-            onChange={(e) => setSeriesInput(e.target.value)}
-          />
-        </Field>
+        <Button
+          accent={colors.accent.purple}
+          loading={loading}
+          loadingLabel="Computing…"
+          onClick={() => void handleSubmit()}
+        >
+          Run Entropy Analysis
+        </Button>
 
-        <button style={BTN_STYLE} onClick={() => void handleSubmit()} disabled={loading}>
-          {loading ? "Computing…" : "Run Entropy Analysis"}
-        </button>
-
-        {err && (
-          <div style={{ color: "#f87171", fontSize: 12, marginTop: 10 }}>Error: {err}</div>
-        )}
-      </div>
+        {err && <ErrorBox message={err} />}
+      </Card>
 
       {report && (
         <>
-          {/* Summary */}
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-            {[
-              { label: "Epochs", value: report.entropy_series.length.toString() },
-              {
-                label: "Max Entropy",
-                value: Math.max(...report.entropy_series).toFixed(4),
-              },
-              {
-                label: "Max KL",
-                value:
-                  report.kl_series.length > 0
-                    ? Math.max(...report.kl_series).toFixed(4)
-                    : "—",
-              },
-              { label: "Alerts", value: report.alerts.length.toString() },
-            ].map((s) => (
-              <div
-                key={s.label}
-                style={{
-                  background: "#161616",
-                  border: "1px solid #2a2a2a",
-                  borderRadius: 6,
-                  padding: "10px 16px",
-                  flex: "1 1 120px",
-                }}
-              >
-                <div style={{ color: "#888", fontSize: 11 }}>{s.label}</div>
-                <div style={{ color: "#a78bfa", fontSize: 17, fontWeight: 700 }}>{s.value}</div>
-              </div>
-            ))}
-          </div>
+          <StatsRow>
+            <StatCard label="Epochs" value={report.entropy_series.length.toString()} color={colors.accent.purple} />
+            <StatCard
+              label="Max Entropy"
+              value={Math.max(...report.entropy_series).toFixed(4)}
+              color={colors.accent.purple}
+            />
+            <StatCard
+              label="Max KL"
+              value={report.kl_series.length > 0 ? Math.max(...report.kl_series).toFixed(4) : "—"}
+              color={colors.accent.purple}
+            />
+            <StatCard label="Alerts" value={report.alerts.length.toString()} color={colors.accent.red} />
+          </StatsRow>
 
-          {/* Entropy chart */}
-          <div style={CARD}>
-            <div
-              style={{ color: "#888", fontSize: 11, marginBottom: 10 }}
-            >
-              Shannon entropy, KL divergence, entropy rate — alert epochs marked in red
+          <Card>
+            <div style={{ color: colors.textMuted, fontSize: 11, marginBottom: spacing.sm }}>
+              Entropy, KL divergence from prior, entropy rate — alert epochs marked in red
             </div>
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
                 <XAxis
                   dataKey="t"
-                  tick={{ fill: "#555", fontSize: 10 }}
+                  tick={{ fill: colors.textFaint, fontSize: 10 }}
                   axisLine={false}
                   tickLine={false}
-                  label={{ value: "epoch", fill: "#444", fontSize: 10, position: "insideBottomRight", offset: -4 }}
                 />
                 <YAxis
-                  tick={{ fill: "#555", fontSize: 10 }}
+                  tick={{ fill: colors.textFaint, fontSize: 10 }}
                   axisLine={false}
                   tickLine={false}
-                  width={46}
+                  width={52}
                 />
                 <Tooltip
-                  contentStyle={{ background: "#111", border: "1px solid #333", fontSize: 11 }}
-                  labelStyle={{ color: "#888" }}
+                  contentStyle={{
+                    background: colors.surface0,
+                    border: `1px solid ${colors.border}`,
+                    fontSize: 11,
+                  }}
+                  labelStyle={{ color: colors.textMuted }}
                 />
-                <Legend
-                  wrapperStyle={{ fontSize: 11, color: "#888" }}
-                />
-                {/* Alert epoch reference lines */}
+                <Legend wrapperStyle={{ fontSize: 11, color: colors.textMuted }} />
                 {Array.from(alertEpochs).map((t) => (
-                  <ReferenceLine key={t} x={t} stroke="#f87171" strokeDasharray="3 3" strokeOpacity={0.7} />
+                  <ReferenceLine
+                    key={t}
+                    x={t}
+                    stroke={colors.accent.red}
+                    strokeDasharray="3 3"
+                    strokeOpacity={0.7}
+                  />
                 ))}
                 <Line
                   type="monotone"
                   dataKey="entropy"
-                  stroke="#a78bfa"
+                  stroke={colors.accent.purple}
                   dot={false}
                   strokeWidth={1.5}
-                  name="Entropy"
+                  name="Entropy (nats)"
                 />
                 <Line
                   type="monotone"
                   dataKey="kl"
-                  stroke="#60a5fa"
+                  stroke={colors.accent.blue}
                   dot={false}
                   strokeWidth={1.2}
-                  name="KL div"
+                  name="KL divergence"
                   strokeDasharray="4 2"
                 />
                 <Line
                   type="monotone"
                   dataKey="rate"
-                  stroke="#4ade80"
+                  stroke={colors.accent.green}
                   dot={false}
                   strokeWidth={1.2}
                   name="Entropy rate"
@@ -259,42 +273,32 @@ export function EntropyPage() {
                 />
               </LineChart>
             </ResponsiveContainer>
-          </div>
+          </Card>
 
-          {/* Alert list */}
           {report.alerts.length > 0 && (
-            <div style={CARD}>
-              <div
-                style={{ color: "#f87171", fontSize: 12, fontWeight: 600, marginBottom: 12, letterSpacing: 1 }}
-              >
+            <Card>
+              <SectionLabel color={colors.accent.red}>
                 ALERTS ({report.alerts.length})
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              </SectionLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: spacing.sm }}>
                 {report.alerts.map((a, i) => (
                   <div
                     key={i}
                     style={{
-                      background: "#1a0000",
-                      border: "1px solid #3a1010",
+                      background: colors.accent.redDark,
+                      border: `1px solid ${colors.accent.orangeDark}`,
                       borderRadius: 6,
                       padding: "8px 14px",
                       fontSize: 12,
                     }}
                   >
-                    <span style={{ color: "#f87171", fontWeight: 600 }}>
-                      t={a.triggered_at}
-                    </span>
-                    <span style={{ color: "#888", marginLeft: 10 }}>
-                      [{a.alert_type}]
-                    </span>
-                    <span style={{ color: "#e0e0e0", marginLeft: 10 }}>{a.message}</span>
-                    <span style={{ color: "#666", marginLeft: 10 }}>
-                      val={a.metric_value.toFixed(4)} &gt; thr={a.threshold.toFixed(4)}
-                    </span>
+                    <span style={{ color: colors.accent.red, fontWeight: 700 }}>t={a.triggered_at}</span>
+                    <span style={{ color: colors.textMuted, marginLeft: 10 }}>[{a.alert_type}]</span>
+                    <span style={{ color: colors.text, marginLeft: 10 }}>{a.message}</span>
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
           )}
         </>
       )}

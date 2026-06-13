@@ -7,16 +7,15 @@ import { GnssPage } from "./pages/GnssPage";
 import { ValuationPage } from "./pages/ValuationPage";
 import { BayesianPage } from "./pages/BayesianPage";
 import { EntropyPage } from "./pages/EntropyPage";
-
-const PAGE_BG = "#0a0a0a";
+import { colors, typography } from "./styles/tokens";
 
 function Header({ healthy }: { healthy: boolean | null }) {
   const dot =
     healthy === null
-      ? { color: "#888", label: "checking…" }
+      ? { color: colors.textMuted, label: "checking…" }
       : healthy
-        ? { color: "#4ade80", label: "API online" }
-        : { color: "#f87171", label: "API offline" };
+        ? { color: colors.accent.green, label: "API online" }
+        : { color: colors.accent.red, label: "API offline" };
 
   return (
     <div
@@ -25,8 +24,8 @@ function Header({ healthy }: { healthy: boolean | null }) {
         alignItems: "center",
         justifyContent: "flex-end",
         padding: "10px 24px",
-        background: "#111",
-        borderBottom: "1px solid #222",
+        background: colors.surface0,
+        borderBottom: `1px solid ${colors.borderSide}`,
         height: 42,
         flexShrink: 0,
       }}
@@ -62,9 +61,9 @@ export default function App() {
         style={{
           display: "flex",
           minHeight: "100vh",
-          background: PAGE_BG,
-          color: "#e0e0e0",
-          fontFamily: "'Consolas', 'Courier New', monospace",
+          background: colors.bg,
+          color: colors.text,
+          fontFamily: typography.fontMono,
         }}
       >
         <Sidebar />

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ResilienceSimParams } from "../api";
+import { colors } from "../styles/tokens";
 
 // ---- Shared UI helpers ----
 
@@ -12,17 +13,17 @@ function Field({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <label style={{ color: "#aaa", fontSize: 12 }}>{label}</label>
+      <label style={{ color: colors.textMuted, fontSize: 12 }}>{label}</label>
       {children}
     </div>
   );
 }
 
 const inputStyle: React.CSSProperties = {
-  background: "#1e1e1e",
-  border: "1px solid #444",
+  background: colors.inputBg,
+  border: `1px solid ${colors.border}`,
   borderRadius: 4,
-  color: "#e0e0e0",
+  color: colors.text,
   padding: "5px 8px",
   fontSize: 13,
   width: "100%",
@@ -104,8 +105,8 @@ export function TwinRunPanel({ onSubmit, loading }: TwinRunPanelProps) {
   }
 
   return (
-    <div style={{ background: "#161616", borderRadius: 8, padding: 16 }}>
-      <h3 style={{ color: "#ddd", margin: "0 0 12px", fontSize: 14 }}>
+    <div style={{ background: colors.surface1, borderRadius: 8, padding: 16 }}>
+      <h3 style={{ color: colors.text, margin: "0 0 12px", fontSize: 14 }}>
         Twin Run — per-epoch fault analysis
       </h3>
       <div
@@ -176,7 +177,7 @@ export function TwinRunPanel({ onSubmit, loading }: TwinRunPanelProps) {
         </Field>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <label style={{ color: "#aaa", fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>
+        <label style={{ color: colors.textMuted, fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>
           <input
             type="checkbox"
             checked={form.inject_spoof}
@@ -215,8 +216,8 @@ export function TwinRunPanel({ onSubmit, loading }: TwinRunPanelProps) {
         onClick={handleRun}
         disabled={loading}
         style={{
-          background: loading ? "#333" : "#1d4ed8",
-          color: loading ? "#666" : "#fff",
+          background: loading ? colors.surface1Hover : colors.accent.blue,
+          color: loading ? colors.textDim : "#000",
           border: "none",
           borderRadius: 6,
           padding: "8px 24px",
@@ -256,8 +257,8 @@ export function ResilienceSimPanel({ onSubmit, loading }: ResPanelProps) {
   }
 
   return (
-    <div style={{ background: "#161616", borderRadius: 8, padding: 16 }}>
-      <h3 style={{ color: "#ddd", margin: "0 0 12px", fontSize: 14 }}>
+    <div style={{ background: colors.surface1, borderRadius: 8, padding: 16 }}>
+      <h3 style={{ color: colors.text, margin: "0 0 12px", fontSize: 14 }}>
         Resilience Sim — 4-class Monte Carlo benchmark
       </h3>
       <div
@@ -309,8 +310,8 @@ export function ResilienceSimPanel({ onSubmit, loading }: ResPanelProps) {
         onClick={() => onSubmit(form)}
         disabled={loading}
         style={{
-          background: loading ? "#333" : "#7c3aed",
-          color: loading ? "#666" : "#fff",
+          background: loading ? colors.surface1Hover : colors.accent.purple,
+          color: loading ? colors.textDim : "#000",
           border: "none",
           borderRadius: 6,
           padding: "8px 24px",

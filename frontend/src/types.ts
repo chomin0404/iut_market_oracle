@@ -1,38 +1,33 @@
 // ---- /valuation ----
 
+/** POST /api/v1/valuation/dcf */
 export interface DCFRequest {
-  fcff_series: number[];
-  terminal_growth_rate: number;
-  wacc: number;
-  shares_outstanding: number;
-  net_debt: number;
-}
-
-export interface SensitivityRow {
-  wacc: number;
-  growth: number;
-  value: number;
+  initial_fcf: number;
+  growth_rate: number;
+  discount_rate: number;
+  forecast_years?: number;
+  terminal_growth_rate?: number;
 }
 
 export interface DCFResponse {
-  intrinsic_value: number;
+  projected_fcfs: number[];
+  discounted_fcfs: number[];
   terminal_value: number;
-  pv_fcff: number;
-  sensitivity: SensitivityRow[];
+  discounted_terminal_value: number;
+  enterprise_value: number;
 }
 
+/** POST /api/v1/valuation/dcf/reverse */
 export interface ReverseDCFRequest {
-  market_price: number;
-  shares_outstanding: number;
-  net_debt: number;
-  wacc: number;
-  explicit_fcff: number[];
+  target_enterprise_value: number;
+  initial_fcf: number;
+  discount_rate: number;
+  forecast_years?: number;
+  terminal_growth_rate?: number;
 }
 
 export interface ReverseDCFResponse {
   implied_growth_rate: number;
-  terminal_value: number;
-  pv_explicit: number;
 }
 
 // ---- /bayesian ----
@@ -40,44 +35,48 @@ export interface ReverseDCFResponse {
 export interface PriorSpec {
   distribution: string;
   params: Record<string, number>;
+  description?: string;
 }
+
+export type EvidenceKind = "observation" | "expert_prior" | "market_data" | "backtest";
 
 export interface Evidence {
-  metric: string;
+  source: string;
+  kind: EvidenceKind;
   value: number;
   weight?: number;
+  tag?: string;
+  notes?: string;
 }
 
+/** POST /api/v1/bayesian/update — returns PosteriorSummary */
 export interface BayesianUpdateRequest {
   prior: PriorSpec;
   evidence: Evidence[];
-  n_samples?: number;
 }
 
+/** Mirrors schemas.PosteriorSummary */
 export interface PosteriorSummary {
   mean: number;
-  std: number;
-  credible_interval: [number, number];
-  distribution: string;
-}
-
-export interface BayesianUpdateResponse {
-  posterior: PosteriorSummary;
-  bayes_factor: number;
-  evidence_weight: number;
+  variance: number;
+  credible_interval_95: [number, number];
+  n_evidence: number;
+  updated_at: string;
 }
 
 // ---- /entropy ----
 
-export interface EntropyRequest {
-  series: number[];
-  window?: number;
-  kl_reference?: number[];
-  threshold?: number;
-  experiment_id?: string;
+/** POST /api/v1/entropy/detect */
+export interface EntropyDetectRequest {
+  posteriors: PosteriorSummary[];
+  prior: PriorSpec;
+  experiment_id: string;
+  kl_threshold?: number;
+  entropy_gradient_threshold?: number;
+  rolling_window?: number;
 }
 
-export type AlertType = "entropy_spike" | "kl_divergence" | "entropy_rate";
+export type AlertType = "KL_THRESHOLD" | "ENTROPY_GRADIENT";
 
 export interface EntropyAlert {
   experiment_id: string;

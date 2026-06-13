@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { colors } from "../styles/tokens";
 
 interface NavItem {
   to: string;
@@ -20,8 +21,8 @@ export function Sidebar() {
       style={{
         width: 220,
         minHeight: "100vh",
-        background: "#111",
-        borderRight: "1px solid #222",
+        background: colors.surface0,
+        borderRight: `1px solid ${colors.borderSide}`,
         display: "flex",
         flexDirection: "column",
         padding: "16px 0",
@@ -31,11 +32,11 @@ export function Sidebar() {
       <div
         style={{
           padding: "0 20px 20px",
-          borderBottom: "1px solid #222",
+          borderBottom: `1px solid ${colors.borderSide}`,
           marginBottom: 8,
         }}
       >
-        <div style={{ color: "#fff", fontWeight: 700, fontSize: 13, letterSpacing: 1 }}>
+        <div style={{ color: colors.text, fontWeight: 700, fontSize: 13, letterSpacing: 1 }}>
           IUT MARKET ORACLE
         </div>
         <div style={{ color: "#444", fontSize: 10, marginTop: 2 }}>
@@ -53,9 +54,9 @@ export function Sidebar() {
             alignItems: "center",
             gap: 10,
             padding: "10px 20px",
-            color: isActive ? "#fff" : "#666",
-            background: isActive ? "#1a1a1a" : "transparent",
-            borderLeft: isActive ? "2px solid #4ade80" : "2px solid transparent",
+            color: isActive ? colors.text : colors.textDim,
+            background: isActive ? colors.surface1Hover : "transparent",
+            borderLeft: isActive ? `2px solid ${colors.accent.green}` : "2px solid transparent",
             textDecoration: "none",
             fontSize: 13,
             fontFamily: "'Consolas', monospace",

@@ -1,4 +1,5 @@
 import type { RecommendedAction } from "../types";
+import { colors } from "../styles/tokens";
 
 interface Props {
   action: RecommendedAction;
@@ -12,32 +13,32 @@ const ACTION_CONFIG: Record<
 > = {
   nominal: {
     label: "NOMINAL",
-    bg: "#1a3a1a",
-    fg: "#4ade80",
+    bg: colors.accent.greenDark,
+    fg: colors.accent.green,
     icon: "✓",
   },
   monitor: {
     label: "MONITOR",
-    bg: "#2a2a00",
+    bg: colors.accent.amberDark,
     fg: "#facc15",
     icon: "⚑",
   },
   reduce_trust: {
     label: "REDUCE TRUST",
-    bg: "#2a1800",
-    fg: "#fb923c",
+    bg: colors.accent.orangeDark,
+    fg: colors.accent.orange,
     icon: "⚠",
   },
   switch_source: {
     label: "SWITCH SOURCE",
-    bg: "#2a1800",
+    bg: colors.accent.orangeDark,
     fg: "#f97316",
     icon: "↔",
   },
   ground_immediately: {
     label: "GROUND IMMEDIATELY",
-    bg: "#3a0000",
-    fg: "#f87171",
+    bg: colors.accent.redDark,
+    fg: colors.accent.red,
     icon: "✕",
   },
 };
@@ -71,10 +72,10 @@ export function StatusBanner({ action, reason, runId }: Props) {
         >
           {cfg.label}
         </div>
-        <div style={{ color: "#ccc", fontSize: 13, marginTop: 4 }}>{reason}</div>
+        <div style={{ color: colors.text, fontSize: 13, marginTop: 4 }}>{reason}</div>
       </div>
       {runId && (
-        <div style={{ color: "#666", fontSize: 11, alignSelf: "flex-end" }}>
+        <div style={{ color: colors.textDim, fontSize: 11, alignSelf: "flex-end" }}>
           run: {runId}
         </div>
       )}

@@ -40,6 +40,10 @@ http://127.0.0.1:8000/docs
   FastAPI が 12 のルーターを束ね、Swagger UI から全エンドポイントを試せる。
   CLI・Jupyter・REST クライアントのどこからでも同じロジックを呼び出せる。
 
+- **インタラクティブ React ダッシュボード**
+  `frontend/` に React (Vite + TypeScript) 製の SPA を同梱。
+  GNSS Twin・DCF 評価・ベイズ推論・エントロピー監視を UI から直接実行できる。
+
 ---
 
 ## 使い方
@@ -72,6 +76,33 @@ uv run uvicorn src.api.app:app --reload
 
 ブラウザで `http://127.0.0.1:8000/docs` を開くと、全エンドポイントを対話的に試せる。
 
+### 5. React ダッシュボードの起動（開発モード）
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+ブラウザで `http://localhost:5173` を開く（Vite dev server がバックエンドに自動プロキシする）。
+
+**本番ビルド:**
+
+```bash
+cd frontend
+npm run build   # dist/ に出力
+```
+
+#### ダッシュボード構成
+
+| ページ | パス | 概要 |
+|---|---|---|
+| Overview | `/` | 全モジュールへのナビゲーション |
+| GNSS Twin | `/gnss` | T1500 — スプーフィング検出・Monte Carlo ベンチマーク |
+| Valuation | `/valuation` | T400 — DCF 内在価値・逆算 DCF 含意成長率 |
+| Bayesian | `/bayesian` | T200 — Beta / Normal 共役更新・事後分布ビジュアライザ |
+| Entropy Monitor | `/entropy` | T1000 — Shannon エントロピー・KL 発散・レジーム変化点検出 |
+
 ---
 
 ## モジュール構成
@@ -98,6 +129,11 @@ uv run uvicorn src.api.app:app --reload
 ```
 iut_market_oracle/
 ├── src/                  # 実装（再利用可能）
+├── frontend/             # React ダッシュボード (Vite + TypeScript)
+│   ├── src/pages/        # ページコンポーネント
+│   ├── src/components/   # 共有 UI コンポーネント
+│   ├── src/styles/       # デザイントークン
+│   └── src/api.ts        # バックエンド API クライアント
 ├── tests/                # ユニットテスト・プロパティテスト
 ├── configs/              # 事前分布・シナリオ・モデルレジストリ YAML
 ├── experiments/          # 実行スコープ出力 + メタデータ

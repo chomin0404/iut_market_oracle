@@ -7,12 +7,16 @@ import type {
   ReverseDCFRequest,
   ReverseDCFResponse,
   BayesianUpdateRequest,
-  BayesianUpdateResponse,
-  EntropyRequest,
+  PosteriorSummary,
+  EntropyDetectRequest,
   EntropyReport,
 } from "./types";
 
-const BASE = "/api";
+/** All API routes are under /api/v1 on the FastAPI server.
+ *  The Vite dev proxy forwards /api/* → http://localhost:8000/api/*
+ *  (path kept as-is, no rewrite).
+ */
+const BASE = "/api/v1";
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -27,8 +31,9 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Health check — /health is at FastAPI root (not under /api/v1). */
 export async function checkHealth(): Promise<{ status: string }> {
-  const res = await fetch(`${BASE}/health`);
+  const res = await fetch("/health");
   if (!res.ok) throw new Error("Backend unreachable");
   return res.json() as Promise<{ status: string }>;
 }
@@ -62,19 +67,17 @@ export function postDcf(req: DCFRequest): Promise<DCFResponse> {
 }
 
 export function postReverseDcf(req: ReverseDCFRequest): Promise<ReverseDCFResponse> {
-  return postJson<ReverseDCFResponse>("/valuation/reverse-dcf", req);
+  return postJson<ReverseDCFResponse>("/valuation/dcf/reverse", req);
 }
 
 // ---- Bayesian ----
 
-export function postBayesianUpdate(
-  req: BayesianUpdateRequest
-): Promise<BayesianUpdateResponse> {
-  return postJson<BayesianUpdateResponse>("/bayesian/update", req);
+export function postBayesianUpdate(req: BayesianUpdateRequest): Promise<PosteriorSummary> {
+  return postJson<PosteriorSummary>("/bayesian/update", req);
 }
 
 // ---- Entropy ----
 
-export function postEntropyDetect(req: EntropyRequest): Promise<EntropyReport> {
+export function postEntropyDetect(req: EntropyDetectRequest): Promise<EntropyReport> {
   return postJson<EntropyReport>("/entropy/detect", req);
 }

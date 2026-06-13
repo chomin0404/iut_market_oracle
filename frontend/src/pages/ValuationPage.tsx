@@ -2,243 +2,236 @@ import { useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { postDcf, postReverseDcf } from "../api";
 import type { DCFResponse, ReverseDCFResponse } from "../types";
+import {
+  Card,
+  SectionLabel,
+  Field,
+  Input,
+  Button,
+  ErrorBox,
+  StatCard,
+  StatsRow,
+  PageHeading,
+  FormGrid,
+} from "../components/ui";
+import { colors } from "../styles/tokens";
 
-const CARD = {
-  background: "#161616",
-  border: "1px solid #2a2a2a",
-  borderRadius: 8,
-  padding: 20,
-  marginBottom: 16,
-} as const;
+// ---- DCF Panel ----
 
-const INPUT_STYLE = {
-  background: "#111",
-  border: "1px solid #333",
-  borderRadius: 4,
-  color: "#e0e0e0",
-  padding: "6px 10px",
-  fontSize: 13,
-  width: "100%",
-  fontFamily: "inherit",
-  boxSizing: "border-box" as const,
-};
+function DcfPanel() {
+  const [initialFcf, setInitialFcf] = useState("100");
+  const [growthRate, setGrowthRate] = useState("0.10");
+  const [discountRate, setDiscountRate] = useState("0.08");
+  const [forecastYears, setForecastYears] = useState("5");
+  const [terminalGrowth, setTerminalGrowth] = useState("0.03");
+  const [result, setResult] = useState<DCFResponse | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-const BTN_STYLE = {
-  background: "#4ade80",
-  color: "#000",
-  border: "none",
-  borderRadius: 4,
-  padding: "8px 20px",
-  fontSize: 13,
-  fontWeight: 700,
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ color: "#888", fontSize: 11, marginBottom: 4 }}>{label}</div>
-      {children}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        background: "#111",
-        border: "1px solid #2a2a2a",
-        borderRadius: 6,
-        padding: "10px 16px",
-        flex: "1 1 140px",
-      }}
-    >
-      <div style={{ color: "#888", fontSize: 11 }}>{label}</div>
-      <div style={{ color: "#4ade80", fontSize: 18, fontWeight: 700 }}>{value}</div>
-    </div>
-  );
-}
-
-// ---- DCF Form ----
-
-export function ValuationPage() {
-  // DCF state
-  const [fcffInput, setFcffInput] = useState("100,110,121,133,146");
-  const [tgr, setTgr] = useState("0.03");
-  const [wacc, setWacc] = useState("0.08");
-  const [shares, setShares] = useState("1000");
-  const [debt, setDebt] = useState("200");
-  const [dcfResult, setDcfResult] = useState<DCFResponse | null>(null);
-  const [dcfErr, setDcfErr] = useState<string | null>(null);
-  const [dcfLoading, setDcfLoading] = useState(false);
-
-  // Reverse DCF state
-  const [mktPrice, setMktPrice] = useState("25.0");
-  const [rdShares, setRdShares] = useState("1000");
-  const [rdDebt, setRdDebt] = useState("200");
-  const [rdWacc, setRdWacc] = useState("0.08");
-  const [rdFcffInput, setRdFcffInput] = useState("100,110,121,133,146");
-  const [rdResult, setRdResult] = useState<ReverseDCFResponse | null>(null);
-  const [rdErr, setRdErr] = useState<string | null>(null);
-  const [rdLoading, setRdLoading] = useState(false);
-
-  async function handleDcf() {
-    setDcfLoading(true);
-    setDcfErr(null);
+  async function handleSubmit() {
+    setLoading(true);
+    setErr(null);
     try {
-      const fcff = fcffInput.split(",").map((v) => parseFloat(v.trim()));
-      const result = await postDcf({
-        fcff_series: fcff,
-        terminal_growth_rate: parseFloat(tgr),
-        wacc: parseFloat(wacc),
-        shares_outstanding: parseFloat(shares),
-        net_debt: parseFloat(debt),
+      const res = await postDcf({
+        initial_fcf: parseFloat(initialFcf),
+        growth_rate: parseFloat(growthRate),
+        discount_rate: parseFloat(discountRate),
+        forecast_years: parseInt(forecastYears, 10),
+        terminal_growth_rate: parseFloat(terminalGrowth),
       });
-      setDcfResult(result);
+      setResult(res);
     } catch (e) {
-      setDcfErr(e instanceof Error ? e.message : String(e));
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setDcfLoading(false);
+      setLoading(false);
     }
   }
 
-  async function handleReverseDcf() {
-    setRdLoading(true);
-    setRdErr(null);
-    try {
-      const fcff = rdFcffInput.split(",").map((v) => parseFloat(v.trim()));
-      const result = await postReverseDcf({
-        market_price: parseFloat(mktPrice),
-        shares_outstanding: parseFloat(rdShares),
-        net_debt: parseFloat(rdDebt),
-        wacc: parseFloat(rdWacc),
-        explicit_fcff: fcff,
-      });
-      setRdResult(result);
-    } catch (e) {
-      setRdErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRdLoading(false);
-    }
-  }
-
-  // Sensitivity chart data
-  const sensData =
-    dcfResult?.sensitivity.map((row) => ({
-      label: `g=${(row.growth * 100).toFixed(1)}%`,
-      value: parseFloat(row.value.toFixed(2)),
+  const chartData =
+    result?.projected_fcfs.map((fcf, i) => ({
+      year: `Y${i + 1}`,
+      projected: parseFloat(fcf.toFixed(1)),
+      discounted: parseFloat(result.discounted_fcfs[i].toFixed(1)),
     })) ?? [];
 
   return (
+    <Card>
+      <SectionLabel color={colors.accent.blue}>DISCOUNTED CASH FLOW</SectionLabel>
+      <FormGrid>
+        <Field label="Initial FCF (M)">
+          <Input value={initialFcf} onChange={(e) => setInitialFcf(e.target.value)} />
+        </Field>
+        <Field label="Growth rate (e.g. 0.10)">
+          <Input value={growthRate} onChange={(e) => setGrowthRate(e.target.value)} />
+        </Field>
+        <Field label="Discount rate / WACC (e.g. 0.08)">
+          <Input value={discountRate} onChange={(e) => setDiscountRate(e.target.value)} />
+        </Field>
+        <Field label="Forecast years">
+          <Input
+            type="number"
+            min={1}
+            max={20}
+            value={forecastYears}
+            onChange={(e) => setForecastYears(e.target.value)}
+          />
+        </Field>
+        <Field label="Terminal growth rate (e.g. 0.03)">
+          <Input value={terminalGrowth} onChange={(e) => setTerminalGrowth(e.target.value)} />
+        </Field>
+      </FormGrid>
+
+      <Button accent={colors.accent.blue} loading={loading} onClick={() => void handleSubmit()}>
+        Run DCF
+      </Button>
+
+      {err && <ErrorBox message={err} />}
+
+      {result && (
+        <>
+          <StatsRow>
+            <StatCard
+              label="Enterprise Value (M)"
+              value={`$${result.enterprise_value.toFixed(2)}M`}
+              color={colors.accent.blue}
+            />
+            <StatCard
+              label="Terminal Value (M)"
+              value={`$${result.terminal_value.toFixed(2)}M`}
+              color={colors.accent.blue}
+            />
+            <StatCard
+              label="Disc. Terminal Value (M)"
+              value={`$${result.discounted_terminal_value.toFixed(2)}M`}
+              color={colors.accent.blue}
+            />
+          </StatsRow>
+          <div style={{ color: colors.textMuted, fontSize: 11, marginBottom: 8 }}>
+            Projected vs discounted FCF by year
+          </div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+              <XAxis
+                dataKey="year"
+                tick={{ fill: colors.textDim, fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fill: colors.textDim, fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+                width={50}
+              />
+              <Tooltip
+                contentStyle={{ background: colors.surface0, border: `1px solid ${colors.border}`, fontSize: 12 }}
+                labelStyle={{ color: colors.textMuted }}
+              />
+              <Bar dataKey="projected" name="Projected FCF" radius={[3, 3, 0, 0]}>
+                {chartData.map((_, i) => (
+                  <Cell key={i} fill={colors.accent.blueDark} />
+                ))}
+              </Bar>
+              <Bar dataKey="discounted" name="Discounted FCF" radius={[3, 3, 0, 0]}>
+                {chartData.map((_, i) => (
+                  <Cell key={i} fill={colors.accent.blue} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ---- Reverse DCF Panel ----
+
+function ReverseDcfPanel() {
+  const [targetEv, setTargetEv] = useState("800");
+  const [initialFcf, setInitialFcf] = useState("50");
+  const [discountRate, setDiscountRate] = useState("0.10");
+  const [forecastYears, setForecastYears] = useState("5");
+  const [terminalGrowth, setTerminalGrowth] = useState("0.025");
+  const [result, setResult] = useState<ReverseDCFResponse | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await postReverseDcf({
+        target_enterprise_value: parseFloat(targetEv),
+        initial_fcf: parseFloat(initialFcf),
+        discount_rate: parseFloat(discountRate),
+        forecast_years: parseInt(forecastYears, 10),
+        terminal_growth_rate: parseFloat(terminalGrowth),
+      });
+      setResult(res);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Card>
+      <SectionLabel color={colors.accent.blue}>REVERSE DCF — IMPLIED GROWTH RATE</SectionLabel>
+      <FormGrid>
+        <Field label="Target enterprise value (M)">
+          <Input value={targetEv} onChange={(e) => setTargetEv(e.target.value)} />
+        </Field>
+        <Field label="Initial FCF (M)">
+          <Input value={initialFcf} onChange={(e) => setInitialFcf(e.target.value)} />
+        </Field>
+        <Field label="Discount rate / WACC">
+          <Input value={discountRate} onChange={(e) => setDiscountRate(e.target.value)} />
+        </Field>
+        <Field label="Forecast years">
+          <Input
+            type="number"
+            min={1}
+            max={20}
+            value={forecastYears}
+            onChange={(e) => setForecastYears(e.target.value)}
+          />
+        </Field>
+        <Field label="Terminal growth rate">
+          <Input value={terminalGrowth} onChange={(e) => setTerminalGrowth(e.target.value)} />
+        </Field>
+      </FormGrid>
+
+      <Button accent={colors.accent.blue} loading={loading} onClick={() => void handleSubmit()}>
+        Solve Implied Growth
+      </Button>
+
+      {err && <ErrorBox message={err} />}
+
+      {result && (
+        <StatsRow>
+          <StatCard
+            label="Implied Growth Rate"
+            value={`${(result.implied_growth_rate * 100).toFixed(3)}%`}
+            color={colors.accent.blue}
+          />
+        </StatsRow>
+      )}
+    </Card>
+  );
+}
+
+// ---- Page ----
+
+export function ValuationPage() {
+  return (
     <div>
-      <h2 style={{ color: "#fff", fontSize: 18, fontWeight: 700, margin: "0 0 20px", letterSpacing: 1 }}>
-        Valuation — T400
-      </h2>
-
-      {/* DCF */}
-      <div style={CARD}>
-        <div style={{ color: "#60a5fa", fontSize: 12, fontWeight: 600, marginBottom: 14, letterSpacing: 1 }}>
-          DISCOUNTED CASH FLOW
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
-          <Field label="FCFF series (comma-separated)">
-            <input style={INPUT_STYLE} value={fcffInput} onChange={(e) => setFcffInput(e.target.value)} />
-          </Field>
-          <Field label="Terminal growth rate">
-            <input style={INPUT_STYLE} value={tgr} onChange={(e) => setTgr(e.target.value)} />
-          </Field>
-          <Field label="WACC">
-            <input style={INPUT_STYLE} value={wacc} onChange={(e) => setWacc(e.target.value)} />
-          </Field>
-          <Field label="Shares outstanding (M)">
-            <input style={INPUT_STYLE} value={shares} onChange={(e) => setShares(e.target.value)} />
-          </Field>
-          <Field label="Net debt (M)">
-            <input style={INPUT_STYLE} value={debt} onChange={(e) => setDebt(e.target.value)} />
-          </Field>
-        </div>
-        <button style={BTN_STYLE} onClick={() => void handleDcf()} disabled={dcfLoading}>
-          {dcfLoading ? "Running…" : "Run DCF"}
-        </button>
-
-        {dcfErr && (
-          <div style={{ color: "#f87171", fontSize: 12, marginTop: 10 }}>Error: {dcfErr}</div>
-        )}
-
-        {dcfResult && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-              <Stat label="Intrinsic Value" value={`$${dcfResult.intrinsic_value.toFixed(2)}`} />
-              <Stat label="Terminal Value (M)" value={`$${dcfResult.terminal_value.toFixed(0)}M`} />
-              <Stat label="PV of FCFF (M)" value={`$${dcfResult.pv_fcff.toFixed(0)}M`} />
-            </div>
-            {sensData.length > 0 && (
-              <>
-                <div style={{ color: "#888", fontSize: 11, marginBottom: 8 }}>
-                  Sensitivity (intrinsic value by terminal growth rate)
-                </div>
-                <ResponsiveContainer width="100%" height={160}>
-                  <BarChart data={sensData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                    <XAxis dataKey="label" tick={{ fill: "#666", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "#666", fontSize: 10 }} axisLine={false} tickLine={false} width={50} />
-                    <Tooltip
-                      contentStyle={{ background: "#111", border: "1px solid #333", fontSize: 12 }}
-                      labelStyle={{ color: "#888" }}
-                      itemStyle={{ color: "#60a5fa" }}
-                    />
-                    <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                      {sensData.map((_, i) => (
-                        <Cell key={i} fill={i === Math.floor(sensData.length / 2) ? "#60a5fa" : "#1e3a5f"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Reverse DCF */}
-      <div style={CARD}>
-        <div style={{ color: "#60a5fa", fontSize: 12, fontWeight: 600, marginBottom: 14, letterSpacing: 1 }}>
-          REVERSE DCF — IMPLIED GROWTH RATE
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
-          <Field label="Market price per share ($)">
-            <input style={INPUT_STYLE} value={mktPrice} onChange={(e) => setMktPrice(e.target.value)} />
-          </Field>
-          <Field label="Shares outstanding (M)">
-            <input style={INPUT_STYLE} value={rdShares} onChange={(e) => setRdShares(e.target.value)} />
-          </Field>
-          <Field label="Net debt (M)">
-            <input style={INPUT_STYLE} value={rdDebt} onChange={(e) => setRdDebt(e.target.value)} />
-          </Field>
-          <Field label="WACC">
-            <input style={INPUT_STYLE} value={rdWacc} onChange={(e) => setRdWacc(e.target.value)} />
-          </Field>
-          <Field label="Explicit FCFF (comma-separated)">
-            <input style={INPUT_STYLE} value={rdFcffInput} onChange={(e) => setRdFcffInput(e.target.value)} />
-          </Field>
-        </div>
-        <button style={BTN_STYLE} onClick={() => void handleReverseDcf()} disabled={rdLoading}>
-          {rdLoading ? "Running…" : "Solve Implied Growth"}
-        </button>
-
-        {rdErr && (
-          <div style={{ color: "#f87171", fontSize: 12, marginTop: 10 }}>Error: {rdErr}</div>
-        )}
-
-        {rdResult && (
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 16 }}>
-            <Stat label="Implied Growth Rate" value={`${(rdResult.implied_growth_rate * 100).toFixed(2)}%`} />
-            <Stat label="Terminal Value (M)" value={`$${rdResult.terminal_value.toFixed(0)}M`} />
-            <Stat label="PV Explicit FCFF (M)" value={`$${rdResult.pv_explicit.toFixed(0)}M`} />
-          </div>
-        )}
-      </div>
+      <PageHeading subtitle="T400 — DCF intrinsic value, terminal value, implied growth rate">
+        Valuation
+      </PageHeading>
+      <DcfPanel />
+      <ReverseDcfPanel />
     </div>
   );
 }
