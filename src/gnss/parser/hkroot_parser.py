@@ -52,7 +52,7 @@ from gnss.parser._bit_io import BitReader
 # ---------------------------------------------------------------------------
 
 #: Key size in bits, indexed by KS field value (ICD Table 10).
-_KEY_SIZE_BITS: dict[int, int] = {
+KEY_SIZE_BITS_BY_KS: dict[int, int] = {
     0: 96,
     1: 104,
     2: 128,
@@ -61,6 +61,8 @@ _KEY_SIZE_BITS: dict[int, int] = {
     5: 224,
     6: 256,
 }
+# Legacy private alias — kept for internal backward compatibility.
+_KEY_SIZE_BITS = KEY_SIZE_BITS_BY_KS
 
 #: Tag size in bits, indexed by TS field value (ICD Table 11).
 _TAG_SIZE_BITS: dict[int, int] = {

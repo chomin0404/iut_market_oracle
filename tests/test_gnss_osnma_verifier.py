@@ -24,7 +24,7 @@ from gnss.osnma_inav import (
     SUBFRAME_DURATION_S,
     TESLA_DELAY,
     INavOSNMASimulator,
-    _compute_mac_tag,
+    compute_mac_tag,
     make_inav_nav_data,
 )
 from gnss.osnma_verifier import (
@@ -266,7 +266,7 @@ class TestVerifyCrossTags:
         self.gst_sf_auth = 60  # total seconds from GST epoch
         self.nma_status = NMA_STATUS_OPERATIONAL
         self.nav_data_svid2 = make_inav_nav_data(2, 2)
-        self.cross_tag = _compute_mac_tag(
+        self.cross_tag = compute_mac_tag(
             key=self.tesla_key,
             svid=2,
             gst_sf=self.gst_sf_auth,
@@ -352,7 +352,7 @@ class TestVerifyCrossTags:
 
     def test_multiple_cross_tags(self):
         nav_data_3 = make_inav_nav_data(3, 2)
-        tag_3 = _compute_mac_tag(
+        tag_3 = compute_mac_tag(
             key=self.tesla_key,
             svid=3,
             gst_sf=self.gst_sf_auth,

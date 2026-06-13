@@ -21,7 +21,7 @@ from gnss.osnma_inav import (
     INavOSNMAEngine,
     INavOSNMASimulator,
     SubframeVerifyResult,
-    _compute_mac_tag,
+    compute_mac_tag,
     make_inav_nav_data,
     run_inav_simulation,
 )
@@ -115,7 +115,7 @@ class TestGSTTESLAChain:
 
 
 # ---------------------------------------------------------------------------
-# _compute_mac_tag
+# compute_mac_tag
 # ---------------------------------------------------------------------------
 
 
@@ -124,7 +124,7 @@ class TestComputeMacTag:
     _NAV = os.urandom(NAV_DATA_BYTES)
 
     def test_length(self) -> None:
-        tag = _compute_mac_tag(
+        tag = compute_mac_tag(
             self._KEY,
             svid=1,
             gst_sf=0,
@@ -145,38 +145,38 @@ class TestComputeMacTag:
             nma_status=NMA_STATUS_OPERATIONAL,
             nav_data=self._NAV,
         )
-        assert _compute_mac_tag(**args) == _compute_mac_tag(**args)
+        assert compute_mac_tag(**args) == compute_mac_tag(**args)
 
     def test_different_key(self) -> None:
         other_key = os.urandom(KEY_SIZE_BYTES)
-        t1 = _compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
-        t2 = _compute_mac_tag(other_key, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t1 = compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t2 = compute_mac_tag(other_key, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
         assert t1 != t2
 
     def test_different_svid(self) -> None:
-        t1 = _compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
-        t2 = _compute_mac_tag(self._KEY, 2, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t1 = compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t2 = compute_mac_tag(self._KEY, 2, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
         assert t1 != t2
 
     def test_different_gst(self) -> None:
-        t1 = _compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
-        t2 = _compute_mac_tag(self._KEY, 1, 30, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t1 = compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t2 = compute_mac_tag(self._KEY, 1, 30, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
         assert t1 != t2
 
     def test_different_nav_data(self) -> None:
         other_nav = os.urandom(NAV_DATA_BYTES)
-        t1 = _compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
-        t2 = _compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, other_nav)
+        t1 = compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t2 = compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, other_nav)
         assert t1 != t2
 
     def test_different_nma_status(self) -> None:
-        t1 = _compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
-        t2 = _compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_TEST, self._NAV)
+        t1 = compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t2 = compute_mac_tag(self._KEY, 1, 0, 0, 0, NMA_STATUS_TEST, self._NAV)
         assert t1 != t2
 
     def test_different_adkd(self) -> None:
-        t1 = _compute_mac_tag(self._KEY, 1, 0, ADKD_INAV_CED, 0, NMA_STATUS_OPERATIONAL, self._NAV)
-        t2 = _compute_mac_tag(self._KEY, 1, 0, 4, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t1 = compute_mac_tag(self._KEY, 1, 0, ADKD_INAV_CED, 0, NMA_STATUS_OPERATIONAL, self._NAV)
+        t2 = compute_mac_tag(self._KEY, 1, 0, 4, 0, NMA_STATUS_OPERATIONAL, self._NAV)
         assert t1 != t2
 
 

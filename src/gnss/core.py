@@ -41,7 +41,10 @@ from gnss.pqc import QUANTUM_FIDELITY_THRESHOLD, QuantumFidelityDetector, RLWEAu
 NUM_SVIDS: int = 4
 KEY_SIZE_BITS: int = 128  # TESLA key size [bits]
 MAC_SIZE_BITS: int = 40  # MAC tag size [bits]
-DISCLOSURE_DELAY: int = 2  # key disclosure delay [subframes]
+DISCLOSURE_DELAY: int = 2  # key disclosure delay [subframes] — simulation parameter only.
+# NOTE: The Galileo OSNMA SIS ICD v1.1 §5.3 specifies TESLA_DELAY = 1 (K_{i-1} disclosed in
+#       subframe i).  This value is deliberately set to 2 as a conservative simulation margin.
+#       ICD-compliant code uses osnma_inav.TESLA_DELAY = 1.
 SUBFRAME_DURATION: int = 30  # subframe length [seconds]
 EPH_SIZE: int = 32  # dummy ephemeris size [bytes]
 DEFAULT_SEED: int = 42
@@ -111,6 +114,15 @@ class SimReport:
 
 class TESLAKeyChain:
     """Hash-chain key generation and single-key verification.
+
+    .. deprecated::
+        **Simulation use only.**  This class uses an index-only derivation
+        (``K_i = SHA-256(K_{i+1} || LE32(i))``) that does NOT bind keys to
+        Galileo System Time or the HKROOT alpha nonce.  It is therefore
+        vulnerable to temporal-replay and cross-chain tag-reuse attacks.
+
+        For ICD-compliant (GST-bound) key derivation use
+        :class:`gnss.osnma_inav.GSTTESLAChain` instead.
 
     Chain structure (right = root):
         K_0 <--H-- K_1 <--H-- ... <--H-- K_{n-1}
@@ -751,8 +763,6 @@ def verify_tesla_key(
         raise ValueError("anchor_index must be > candidate_index")
     candidate = bytes.fromhex(candidate_key_hex)
     anchor = bytes.fromhex(anchor_key_hex)
-    chain = TESLAKeyChain.__new__(TESLAKeyChain)  # skip __init__
-    chain._keys = []  # not used by _derive
     result = anchor
     for i in range(anchor_index - 1, candidate_index - 1, -1):
         result = TESLAKeyChain._derive(result, i)

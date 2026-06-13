@@ -49,7 +49,7 @@ from gnss.osnma_inav import (
     MackTagEntry,
     SubframeData,
     SubframeVerifyResult,
-    _compute_mac_tag,
+    compute_mac_tag,
 )
 from gnss.parser.hkroot_parser import ParsedHkroot, parse_dsm_kroot
 from gnss.parser.inav_parser import DecodedSubframe, INavAccumulator, OSNMAPage
@@ -174,7 +174,7 @@ def verify_cross_tags(
         has_nav = nav_data is not None
         tag_valid = False
         if has_nav and nav_data is not None:
-            expected = _compute_mac_tag(
+            expected = compute_mac_tag(
                 key=tesla_key,
                 svid=entry.prn_a,
                 gst_sf=gst_sf_auth,

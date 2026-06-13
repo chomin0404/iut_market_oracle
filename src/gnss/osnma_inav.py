@@ -219,10 +219,10 @@ class GSTTESLAChain:
         # Derive backward: K_{n-2}, …, K_0
         for i in range(n - 2, -1, -1):
             gst_i = gst_start + i * SUBFRAME_DURATION_S
-            self._keys[i] = self._hash_step(self._keys[i + 1], gst_i, alpha)
+            self._keys[i] = self.hash_step(self._keys[i + 1], gst_i, alpha)
 
     @staticmethod
-    def _hash_step(k_succ: bytes, gst_sf: int, alpha: bytes) -> bytes:
+    def hash_step(k_succ: bytes, gst_sf: int, alpha: bytes) -> bytes:
         """K_i = trunc_ks( SHA-256( K_{i+1} || GST_sf_i[4B,BE] || alpha ) )."""
         msg = k_succ + struct.pack(">I", gst_sf & 0xFFFFFFFF) + alpha
         return hashlib.sha256(msg).digest()[: GSTTESLAChain.KEY_BYTES]
@@ -259,7 +259,7 @@ class GSTTESLAChain:
         current = anchor_key
         for i in range(anchor_idx - 1, idx - 1, -1):
             gst_i = self._gst_start + i * SUBFRAME_DURATION_S
-            current = self._hash_step(current, gst_i, self._alpha)
+            current = self.hash_step(current, gst_i, self._alpha)
         return current == key
 
 
@@ -268,7 +268,7 @@ class GSTTESLAChain:
 # ---------------------------------------------------------------------------
 
 
-def _compute_mac_tag(
+def compute_mac_tag(
     key: bytes,
     svid: int,
     gst_sf: int,
@@ -387,7 +387,7 @@ class INavOSNMAEngine:
         current = anchor_key
         for i in range(anchor_idx - 1, idx - 1, -1):
             gst_i = self._gst_start + i * SUBFRAME_DURATION_S
-            current = GSTTESLAChain._hash_step(current, gst_i, self._alpha)
+            current = GSTTESLAChain.hash_step(current, gst_i, self._alpha)
         return current == key
 
     # ------------------------------------------------------------------
@@ -444,7 +444,7 @@ class INavOSNMAEngine:
         # We recompute and compare.
         mac_valid = False
         if key_valid and buffered_sf is not None:
-            expected_tag = _compute_mac_tag(
+            expected_tag = compute_mac_tag(
                 key=mack.tesla_key,
                 svid=sf.svid,
                 gst_sf=buffered_sf.gst_sf,
@@ -665,7 +665,7 @@ class INavOSNMASimulator:
         # tag-0 = HMAC(K_{sf_idx}, SVID, GST_sf, ADKD_INAV_CED, COP=0, NMAS, nav_data)
         # K_{sf_idx} will be disclosed in subframe sf_idx + TESLA_DELAY.
         mac_key = self._chain.get_key(sf_idx)
-        tag0 = _compute_mac_tag(
+        tag0 = compute_mac_tag(
             key=mac_key,
             svid=svid,
             gst_sf=gst_sf,

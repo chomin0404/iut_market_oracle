@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, model_validator
 
 from schemas import ObservationEpoch
+
+if TYPE_CHECKING:
+    from gnss.core import SimReport
 
 # ---------------------------------------------------------------------------
 # T1300  OSNMA / TESLA authentication endpoints
@@ -30,6 +34,13 @@ class AttackTypeStat(BaseModel):
 
 
 class SimulateResponse(BaseModel):
+    """API response for /simulate.
+
+    Mirrors :class:`gnss.core.SimReport` with ``by_attack_type`` values promoted
+    to typed :class:`AttackTypeStat` objects for Pydantic serialisation.
+    Use :meth:`from_sim_report` to convert; do not map fields manually.
+    """
+
     total: int
     spoofed: int
     normal: int
@@ -47,6 +58,33 @@ class SimulateResponse(BaseModel):
         default=0,
         description="key_compromise attacks caught exclusively by quantum fidelity layer",
     )
+
+    @classmethod
+    def from_sim_report(cls, report: SimReport) -> SimulateResponse:
+        """Convert a domain-layer SimReport to an API response."""
+        return cls(
+            total=report.total,
+            spoofed=report.spoofed,
+            normal=report.normal,
+            tp=report.tp,
+            fp=report.fp,
+            fn=report.fn,
+            tn=report.tn,
+            p_fa=report.p_fa,
+            p_md=report.p_md,
+            precision=report.precision,
+            recall=report.recall,
+            f1=report.f1,
+            by_attack_type={
+                k: AttackTypeStat(
+                    total=int(v["total"]),
+                    detected=int(v["detected"]),
+                    p_detect=float(v["p_detect"]),
+                )
+                for k, v in report.by_attack_type.items()
+            },
+            quantum_detections=report.quantum_detections,
+        )
 
 
 class VerifyKeyRequest(BaseModel):

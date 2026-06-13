@@ -25,7 +25,6 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 
 from api.schemas.gnss import (
-    AttackTypeStat,
     DetectionResult,
     DetectRequest,
     DetectResponse,
@@ -100,29 +99,7 @@ def simulate(req: SimulateRequest) -> SimulateResponse:
         _logger.exception("unexpected error")
         raise HTTPException(status_code=500, detail="Simulation failed due to an internal error.")
 
-    return SimulateResponse(
-        total=report.total,
-        spoofed=report.spoofed,
-        normal=report.normal,
-        tp=report.tp,
-        fp=report.fp,
-        fn=report.fn,
-        tn=report.tn,
-        p_fa=report.p_fa,
-        p_md=report.p_md,
-        precision=report.precision,
-        recall=report.recall,
-        f1=report.f1,
-        by_attack_type={
-            k: AttackTypeStat(
-                total=int(v["total"]),
-                detected=int(v["detected"]),
-                p_detect=float(v["p_detect"]),
-            )
-            for k, v in report.by_attack_type.items()
-        },
-        quantum_detections=report.quantum_detections,
-    )
+    return SimulateResponse.from_sim_report(report)
 
 
 @router.post("/verify-key", response_model=VerifyKeyResponse)
