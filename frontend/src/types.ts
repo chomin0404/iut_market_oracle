@@ -1,3 +1,101 @@
+// ---- /valuation ----
+
+export interface DCFRequest {
+  fcff_series: number[];
+  terminal_growth_rate: number;
+  wacc: number;
+  shares_outstanding: number;
+  net_debt: number;
+}
+
+export interface SensitivityRow {
+  wacc: number;
+  growth: number;
+  value: number;
+}
+
+export interface DCFResponse {
+  intrinsic_value: number;
+  terminal_value: number;
+  pv_fcff: number;
+  sensitivity: SensitivityRow[];
+}
+
+export interface ReverseDCFRequest {
+  market_price: number;
+  shares_outstanding: number;
+  net_debt: number;
+  wacc: number;
+  explicit_fcff: number[];
+}
+
+export interface ReverseDCFResponse {
+  implied_growth_rate: number;
+  terminal_value: number;
+  pv_explicit: number;
+}
+
+// ---- /bayesian ----
+
+export interface PriorSpec {
+  distribution: string;
+  params: Record<string, number>;
+}
+
+export interface Evidence {
+  metric: string;
+  value: number;
+  weight?: number;
+}
+
+export interface BayesianUpdateRequest {
+  prior: PriorSpec;
+  evidence: Evidence[];
+  n_samples?: number;
+}
+
+export interface PosteriorSummary {
+  mean: number;
+  std: number;
+  credible_interval: [number, number];
+  distribution: string;
+}
+
+export interface BayesianUpdateResponse {
+  posterior: PosteriorSummary;
+  bayes_factor: number;
+  evidence_weight: number;
+}
+
+// ---- /entropy ----
+
+export interface EntropyRequest {
+  series: number[];
+  window?: number;
+  kl_reference?: number[];
+  threshold?: number;
+  experiment_id?: string;
+}
+
+export type AlertType = "entropy_spike" | "kl_divergence" | "entropy_rate";
+
+export interface EntropyAlert {
+  experiment_id: string;
+  triggered_at: number;
+  alert_type: AlertType;
+  metric_value: number;
+  threshold: number;
+  message: string;
+}
+
+export interface EntropyReport {
+  experiment_id: string;
+  entropy_series: number[];
+  kl_series: number[];
+  entropy_rate_series: number[];
+  alerts: EntropyAlert[];
+}
+
 // ---- /gnss/twin/run ----
 
 export type RecommendedAction =

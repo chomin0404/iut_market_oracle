@@ -2,6 +2,14 @@ import type {
   TwinRunReport,
   ResilienceTwinReport,
   TwinRunRequest,
+  DCFRequest,
+  DCFResponse,
+  ReverseDCFRequest,
+  ReverseDCFResponse,
+  BayesianUpdateRequest,
+  BayesianUpdateResponse,
+  EntropyRequest,
+  EntropyReport,
 } from "./types";
 
 const BASE = "/api";
@@ -45,4 +53,28 @@ export function postResilienceSim(
   params: ResilienceSimParams
 ): Promise<ResilienceTwinReport> {
   return postJson<ResilienceTwinReport>("/gnss/resilience-sim", params);
+}
+
+// ---- Valuation ----
+
+export function postDcf(req: DCFRequest): Promise<DCFResponse> {
+  return postJson<DCFResponse>("/valuation/dcf", req);
+}
+
+export function postReverseDcf(req: ReverseDCFRequest): Promise<ReverseDCFResponse> {
+  return postJson<ReverseDCFResponse>("/valuation/reverse-dcf", req);
+}
+
+// ---- Bayesian ----
+
+export function postBayesianUpdate(
+  req: BayesianUpdateRequest
+): Promise<BayesianUpdateResponse> {
+  return postJson<BayesianUpdateResponse>("/bayesian/update", req);
+}
+
+// ---- Entropy ----
+
+export function postEntropyDetect(req: EntropyRequest): Promise<EntropyReport> {
+  return postJson<EntropyReport>("/entropy/detect", req);
 }
