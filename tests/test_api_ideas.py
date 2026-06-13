@@ -115,10 +115,10 @@ def test_no_auth_required_when_env_unset() -> None:
     assert resp.status_code == 200
 
 
-def test_wrong_api_key_returns_401() -> None:
+def test_wrong_api_key_returns_403() -> None:
     with patch.dict(os.environ, {"IDEAS_API_KEY": "secret"}):
         resp = client.post(_URL, json=_VALID_IDEA, headers={"X-Ideas-API-Key": "wrong"})
-    assert resp.status_code == 401
+    assert resp.status_code == 403
 
 
 def test_correct_api_key_returns_200() -> None:

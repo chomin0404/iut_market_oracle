@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.dependencies import make_api_key_dep
-from api.middleware import RateLimitMiddleware
+from api.middleware import BodySizeLimitMiddleware, RateLimitMiddleware, RequestIdMiddleware
 from api.routers import (
     bayesian,
     entropy,
@@ -214,7 +214,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Middleware execution order (outermost → innermost):
+#   RequestId → BodySizeLimit → RateLimit → CORS → Router
+# Each add_middleware() wraps the existing stack, so last added = outermost.
 app.add_middleware(RateLimitMiddleware, requests_per_minute=_RATE_LIMIT_RPM)
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=1_048_576)
+app.add_middleware(RequestIdMiddleware)
 
 # ---------------------------------------------------------------------------
 # Routers — all domain routes live under /api/v1/
@@ -354,6 +359,7 @@ async def _validation_exception_handler(
 
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    _log.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
         content=_ErrorResponse(
@@ -371,6 +377,7 @@ _HTTP_STATUS_LABELS: dict[int, str] = {
     404: "not_found",
     405: "method_not_allowed",
     409: "conflict",
+    413: "request_entity_too_large",
     422: "unprocessable_entity",
     429: "too_many_requests",
     500: "internal_server_error",

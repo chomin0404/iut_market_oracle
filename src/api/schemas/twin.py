@@ -9,12 +9,17 @@ from twin.simulator import DEFAULT_DT
 
 # Maximum n_steps accepted by T1100 endpoints; keeps JSON response ≤ ~150 KB
 _N_STEPS_MAX: int = 5000
+# Upper bounds for SimulateRequest to prevent OOM
+_HORIZON_MAX: int = 5_000
+_N_SAMPLES_MAX: int = 10_000
 
 
 class SimulateRequest(BaseModel):
     initial_state: DigitalTwinState
-    horizon: int = Field(..., ge=1, description="Number of forward time steps")
-    n_samples: int = Field(..., ge=1, description="Number of Monte Carlo trajectories")
+    horizon: int = Field(..., ge=1, le=_HORIZON_MAX, description="Number of forward time steps")
+    n_samples: int = Field(
+        ..., ge=1, le=_N_SAMPLES_MAX, description="Number of Monte Carlo trajectories"
+    )
     process_noise_std: float = Field(..., ge=0.0, description="Isotropic process noise σ")
     random_seed: int = Field(..., description="RNG seed for reproducibility")
     dt: float = Field(default=DEFAULT_DT, gt=0.0, description="Time step in years")
@@ -24,8 +29,11 @@ class SimulateRequest(BaseModel):
     )
 
 
+_OBSERVATIONS_MAX: int = 10_000  # prevents large payload DoS
+
+
 class CalibrateRequest(BaseModel):
-    observations: list[float]
+    observations: list[float] = Field(..., min_length=1, max_length=_OBSERVATIONS_MAX)
     prior: PriorSpec
     experiment_id: str
     obs_precision: float = Field(default=1.0, gt=0.0, description="Precision τ = 1/σ_obs²")

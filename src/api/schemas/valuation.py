@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import pathlib
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class DCFRequest(BaseModel):
@@ -37,3 +39,11 @@ class RunAllRequest(BaseModel):
     scenario_dir: str = Field(
         default="configs/scenarios", description="Directory with *.yaml scenario files"
     )
+
+    @field_validator("scenario_dir")
+    @classmethod
+    def _no_traversal(cls, v: str) -> str:
+        p = pathlib.PurePosixPath(v)
+        if p.is_absolute() or ".." in p.parts:
+            raise ValueError("scenario_dir must be a relative path within configs/")
+        return v

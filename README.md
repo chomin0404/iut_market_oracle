@@ -86,6 +86,18 @@ npm run dev
 
 ブラウザで `http://localhost:5173` を開く（Vite dev server がバックエンドに自動プロキシする）。
 
+> **CORS 設定**: Vite dev server は `localhost:5173` から API を呼ぶため、バックエンド起動時に `CORS_ORIGINS` を設定する必要があります。
+>
+> ```bash
+> CORS_ORIGINS=http://localhost:5173 uv run uvicorn src.api.app:app --reload
+> ```
+
+> **レート制限**: `RATE_LIMIT_RPM` はプロセス内カウンターで管理されます。複数ワーカーで起動すると制限が workers 倍になるため、レート制限を有効にする場合は `--workers 1` を指定してください。
+>
+> ```bash
+> RATE_LIMIT_RPM=120 uv run uvicorn src.api.app:app --workers 1
+> ```
+
 **本番ビルド:**
 
 ```bash

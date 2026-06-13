@@ -25,8 +25,11 @@ class KLResponse(BaseModel):
     kl_divergence: float
 
 
+_POSTERIORS_MAX: int = 1_000  # keeps compute bounded; ~1 MB JSON
+
+
 class DetectRequest(BaseModel):
-    posteriors: list[PosteriorSummary] = Field(..., min_length=1)
+    posteriors: list[PosteriorSummary] = Field(..., min_length=1, max_length=_POSTERIORS_MAX)
     prior: PriorSpec
     experiment_id: str
     kl_threshold: float = Field(default=0.5, gt=0.0)

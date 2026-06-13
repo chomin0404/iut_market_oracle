@@ -39,7 +39,7 @@ def make_api_key_dep(header_name: str, env_var: str):
     Returns
     -------
     An ``async`` callable suitable for use with ``Depends()``.
-    Raises HTTP **401** when a key is required but absent or wrong.
+    Raises HTTP **403** when a key is required but absent or wrong.
     """
     _scheme = APIKeyHeader(name=header_name, auto_error=False)
 
@@ -47,7 +47,7 @@ def make_api_key_dep(header_name: str, env_var: str):
         required = os.getenv(env_var)
         if required and key != required:
             raise HTTPException(
-                status_code=401,
+                status_code=403,
                 detail=f"Invalid or missing {header_name} header.",
             )
 

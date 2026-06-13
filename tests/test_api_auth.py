@@ -96,27 +96,27 @@ class TestAuthProductionMode:
         )
         assert resp.status_code == 200
 
-    def test_wrong_key_returns_401(self, monkeypatch) -> None:
+    def test_wrong_key_returns_403(self, monkeypatch) -> None:
         client = _fresh_client(monkeypatch, oracle_key=self._KEY)
         resp = client.post(
             "/api/v1/risk/simulate",
             json=_SIMULATE_PAYLOAD,
             headers={"X-API-Key": "wrong-key"},
         )
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
-    def test_missing_key_returns_401(self, monkeypatch) -> None:
+    def test_missing_key_returns_403(self, monkeypatch) -> None:
         client = _fresh_client(monkeypatch, oracle_key=self._KEY)
         resp = client.post("/api/v1/risk/simulate", json=_SIMULATE_PAYLOAD)
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
-    def test_401_error_body_format(self, monkeypatch) -> None:
+    def test_403_error_body_format(self, monkeypatch) -> None:
         client = _fresh_client(monkeypatch, oracle_key=self._KEY)
         resp = client.post("/api/v1/valuation/dcf", json=_DCF_PAYLOAD)
-        assert resp.status_code == 401
+        assert resp.status_code == 403
         body = resp.json()
-        assert body["status_code"] == 401
-        assert body["error"] == "unauthorized"
+        assert body["status_code"] == 403
+        assert body["error"] == "forbidden"
 
     def test_unprotected_route_needs_no_key(self, monkeypatch) -> None:
         """Health endpoint requires no key even in production mode."""

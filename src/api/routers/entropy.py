@@ -132,9 +132,10 @@ def compute_kl_endpoint(
     description=(
         "Run the full entropy monitoring pipeline over a sequence of `PosteriorSummary` objects "
         "(Bayesian posteriors through time). Computes:\n\n"
-        "- **entropy_series**: H(p_t) for each step t\n"
-        "- **kl_series**: KL(p_t ‖ prior) for each step t\n"
-        "- **entropy_rate_series**: rolling ΔH over `rolling_window` steps\n\n"
+        "- **entropy_series**: H(p_t) for each step t — length N\n"
+        "- **kl_series**: KL(p_t ‖ prior) for each step t — length N\n"
+        "- **entropy_rate_series**: rolling ΔH over `rolling_window` steps — "
+        "length max(0, N − rolling_window); shorter than the other two series\n\n"
         "Fires **KL_THRESHOLD** alerts when KL > `kl_threshold`, "
         "and **ENTROPY_GRADIENT** alerts when |ΔH| > `entropy_gradient_threshold`."
     ),
