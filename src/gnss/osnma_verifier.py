@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ec import ECDSA
+from cryptography.hazmat.primitives.asymmetric.ec import ECDSA, EllipticCurvePublicKey
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
@@ -109,7 +109,9 @@ def verify_kroot_ds(
         der_sig = encode_dss_signature(r, s)
 
         pubkey = load_pem_public_key(pubkey_pem)
-        pubkey.verify(der_sig, signed_data, ECDSA(SHA256()))  # type: ignore[arg-type]
+        if not isinstance(pubkey, EllipticCurvePublicKey):
+            return False
+        pubkey.verify(der_sig, signed_data, ECDSA(SHA256()))
         return True
     except (InvalidSignature, ValueError, TypeError):
         return False

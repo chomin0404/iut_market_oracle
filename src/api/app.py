@@ -331,7 +331,9 @@ class _ErrorResponse(BaseModel):
 
 
 @app.exception_handler(StarletteHTTPException)
-async def _http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def _http_exception_handler(  # pyright: ignore[reportUnusedFunction]
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content=_ErrorResponse(
@@ -344,7 +346,7 @@ async def _http_exception_handler(request: Request, exc: StarletteHTTPException)
 
 
 @app.exception_handler(RequestValidationError)
-async def _validation_exception_handler(
+async def _validation_exception_handler(  # pyright: ignore[reportUnusedFunction]
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     return JSONResponse(
@@ -358,7 +360,9 @@ async def _validation_exception_handler(
 
 
 @app.exception_handler(Exception)
-async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+async def _unhandled_exception_handler(  # pyright: ignore[reportUnusedFunction]
+    request: Request, exc: Exception
+) -> JSONResponse:
     _log.exception("Unhandled exception on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,

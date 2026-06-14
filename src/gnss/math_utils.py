@@ -7,10 +7,10 @@ production scoring layer (resilience_twin, mvp) and the simulation layer
 
 Functions
 ---------
-_init_constellation   Unit LOS vectors via Fibonacci lattice (upper hemisphere)
-_build_graph          Gaussian-kernel similarity weight matrix
-_geometry_matrix      WLS Doppler geometry matrix H  shape (|S|, 4)
-_compute_roc          ROC curve (FPR, TPR) and scalar AUC
+init_constellation   Unit LOS vectors via Fibonacci lattice (upper hemisphere)
+build_graph          Gaussian-kernel similarity weight matrix
+geometry_matrix      WLS Doppler geometry matrix H  shape (|S|, 4)
+compute_roc          ROC curve (FPR, TPR) and scalar AUC
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import numpy as np
 
 from gnss.constants import _L1_FREQ, _SPEED_OF_LIGHT
 
-# ROC resolution — algorithm parameter kept here since it belongs to _compute_roc
+# ROC resolution — algorithm parameter kept here since it belongs to compute_roc
 _ROC_N_THRESHOLDS: int = 200
 
 
@@ -30,7 +30,7 @@ _ROC_N_THRESHOLDS: int = 200
 # ---------------------------------------------------------------------------
 
 
-def _init_constellation(n_sats: int) -> np.ndarray:
+def init_constellation(n_sats: int) -> np.ndarray:
     """Unit LOS vectors from receiver to satellites  shape (n_sats, 3).
 
     Placed on the upper hemisphere (z > 0) via a Fibonacci spiral so the
@@ -45,12 +45,16 @@ def _init_constellation(n_sats: int) -> np.ndarray:
     return e  # (n_sats, 3)
 
 
+# Backward-compatible alias (deprecated — import init_constellation directly)
+_init_constellation = init_constellation
+
+
 # ---------------------------------------------------------------------------
 # Similarity graph
 # ---------------------------------------------------------------------------
 
 
-def _build_graph(doppler_dev: np.ndarray, sigma: float) -> np.ndarray:
+def build_graph(doppler_dev: np.ndarray, sigma: float) -> np.ndarray:
     """Weight matrix of the satellite similarity graph  shape (n, n).
 
     w_{ij} = exp(−|Δf_i − Δf_j|² / σ²),  diagonal forced to zero.
@@ -61,12 +65,16 @@ def _build_graph(doppler_dev: np.ndarray, sigma: float) -> np.ndarray:
     return W
 
 
+# Backward-compatible alias (deprecated — import build_graph directly)
+_build_graph = build_graph
+
+
 # ---------------------------------------------------------------------------
 # WLS geometry matrix
 # ---------------------------------------------------------------------------
 
 
-def _geometry_matrix(los: np.ndarray, S: list[int]) -> np.ndarray:
+def geometry_matrix(los: np.ndarray, S: list[int]) -> np.ndarray:
     """WLS geometry matrix H  shape (|S|, 4).
 
     Doppler observation equation (row i):
@@ -77,12 +85,16 @@ def _geometry_matrix(los: np.ndarray, S: list[int]) -> np.ndarray:
     return np.column_stack([-scale * los[S, :], -np.full(len(S), scale)])
 
 
+# Backward-compatible alias (deprecated — import geometry_matrix directly)
+_geometry_matrix = geometry_matrix
+
+
 # ---------------------------------------------------------------------------
 # ROC / AUC
 # ---------------------------------------------------------------------------
 
 
-def _compute_roc(
+def compute_roc(
     scores: np.ndarray,
     labels: np.ndarray,
 ) -> tuple[list[float], list[float], float]:
@@ -113,3 +125,7 @@ def _compute_roc(
     order = np.argsort(fpr_arr)
     auc = float(np.trapezoid(tpr_arr[order], fpr_arr[order]))
     return fpr_arr.tolist(), tpr_arr.tolist(), max(0.0, min(1.0, auc))
+
+
+# Backward-compatible alias (deprecated — import compute_roc directly)
+_compute_roc = compute_roc

@@ -65,15 +65,14 @@ PAGES_PER_SUBFRAME: int = 15
 #: Total OSNMA bits per subframe.
 OSNMA_BITS_PER_SUBFRAME: int = OSNMA_BITS_PER_PAGE * PAGES_PER_SUBFRAME  # 600
 
-assert HKROOT_BITS + MACK_BITS == OSNMA_BITS_PER_SUBFRAME, (
-    f"HKROOT({HKROOT_BITS}) + MACK({MACK_BITS}) != {OSNMA_BITS_PER_SUBFRAME}"
-)
+if HKROOT_BITS + MACK_BITS != OSNMA_BITS_PER_SUBFRAME:
+    raise RuntimeError(
+        f"OSNMA bit-layout invariant violated: "
+        f"HKROOT({HKROOT_BITS}) + MACK({MACK_BITS}) != {OSNMA_BITS_PER_SUBFRAME}"
+    )
 
 #: OSNMA bytes per page.
 OSNMA_BYTES_PER_PAGE: int = OSNMA_BITS_PER_PAGE // 8  # 5
-
-#: Re-export for convenience
-MACK_BITS = MACK_BITS
 
 
 # ---------------------------------------------------------------------------

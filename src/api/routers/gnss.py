@@ -50,7 +50,7 @@ from gnss.core import (
     run_simulation,
     verify_tesla_key,
 )
-from gnss.math_utils import _init_constellation
+from gnss.math_utils import init_constellation
 from gnss.multi_sensor_sim import MultiSensorConfig, run_ms_simulation
 from gnss.persistence import new_run_id
 from gnss.persistence import save_twin_run as _save_twin_run
@@ -499,7 +499,7 @@ async def twin_run(req: TwinRunRequest) -> TwinRunReport:
                 norms = np.linalg.norm(los, axis=1, keepdims=True)
                 los = los / np.where(norms > 0, norms, 1.0)
             else:
-                los = _init_constellation(req.n_sats)
+                los = init_constellation(req.n_sats)
 
             # ── Build per-epoch arrays ──────────────────────────────────────────
             doppler_seq: list[np.ndarray] = []

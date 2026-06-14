@@ -38,9 +38,9 @@ _logger = logging.getLogger(__name__)
 def simulate_endpoint(req: SimulateRequest) -> SimulationResult:
     """Run Monte Carlo forward simulation from an initial DigitalTwinState."""
     rng = np.random.default_rng(req.random_seed)
-    F: np.ndarray | None = None
+    transition_mat: np.ndarray | None = None
     if req.transition_matrix is not None:
-        F = np.array(req.transition_matrix, dtype=float)
+        transition_mat = np.array(req.transition_matrix, dtype=float)
     try:
         return simulate(
             initial_state=req.initial_state,
@@ -49,7 +49,7 @@ def simulate_endpoint(req: SimulateRequest) -> SimulationResult:
             process_noise_std=req.process_noise_std,
             rng=rng,
             dt=req.dt,
-            transition_matrix=F,
+            transition_matrix=transition_mat,
         )
     except ValueError as e:
         _logger.warning("%s", e, exc_info=True)

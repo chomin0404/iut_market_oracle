@@ -51,6 +51,16 @@ known-first-party = [
 # sys.path manipulation must precede all intra-project imports
 "src/gnss/__main__.py" = ["E402"]
 
+[tool.coverage.run]
+omit = [
+    # Report generation script — requires full experiment state to run
+    "src/report.py",
+    # CLI entry points — tested via subprocess, not importable unit tests
+    "src/gnss/__main__.py",
+    "src/models/__main__.py",
+    "src/fragmentation/__main__.py",
+]
+
 [tool.pyright]
 pythonVersion = "3.10"
 include = ["src", "tests"]
