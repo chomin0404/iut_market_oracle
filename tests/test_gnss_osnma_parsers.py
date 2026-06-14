@@ -14,17 +14,26 @@ import struct
 
 import pytest
 
+from core.data_structures import DSMPKRMessage, ECDSAType
 from gnss.osnma_inav import (
     SUBFRAME_DURATION_S,
 )
 from gnss.parser._bit_io import BitReader
 from gnss.parser.hkroot_parser import (
+    _DSM_PKR_FIXED_HEADER_BITS,
+    _ITN_NODE_BITS,
+    _PK_SIZE_BITS,
+    DSM_BLOCK_BITS,
     DSM_BLOCKS_PER_MESSAGE,
     DSM_TOTAL_BITS,
     HKROOT_BITS,
     DsmKroot,
+    DsmPkr,
+    ParsedPkr,
     parse_dsm_kroot,
+    parse_dsm_pkr,
     parse_hkroot_section,
+    parsed_pkr_to_message,
 )
 from gnss.parser.hkroot_parser import (
     NMA_STATUS_OPERATIONAL as HP_NMA_OPERATIONAL,
@@ -869,3 +878,268 @@ class TestINavAccumulator:
         completed = acc.completed_dsm()
         assert 3 in completed
         assert completed[3].is_complete()
+
+
+# ===========================================================================
+# DsmPkr assembler
+# ===========================================================================
+
+
+class TestDsmPkr:
+    def _build_complete(self) -> DsmPkr:
+        dsm = DsmPkr(dsm_id=12)
+        for i in range(DSM_BLOCKS_PER_MESSAGE):
+            dsm.add_block(i, bytes([i]) * 9)
+        return dsm
+
+    def test_is_complete_after_14_blocks(self) -> None:
+        dsm = self._build_complete()
+        assert dsm.is_complete()
+
+    def test_is_incomplete_with_13_blocks(self) -> None:
+        dsm = DsmPkr(dsm_id=12)
+        for i in range(13):
+            dsm.add_block(i, bytes(9))
+        assert not dsm.is_complete()
+
+    def test_missing_blocks(self) -> None:
+        dsm = DsmPkr(dsm_id=12)
+        for i in [0, 2, 5]:
+            dsm.add_block(i, bytes(9))
+        missing = dsm.missing_blocks()
+        assert 1 in missing
+        assert 0 not in missing
+
+    def test_assembled_bytes_length(self) -> None:
+        dsm = self._build_complete()
+        assert len(dsm.assembled_bytes()) == DSM_TOTAL_BITS // 8
+
+    def test_assembled_bytes_order(self) -> None:
+        dsm = self._build_complete()
+        raw = dsm.assembled_bytes()
+        for i in range(DSM_BLOCKS_PER_MESSAGE):
+            assert raw[i * 9 : (i + 1) * 9] == bytes([i]) * 9
+
+    def test_assembled_raises_if_incomplete(self) -> None:
+        dsm = DsmPkr(dsm_id=12)
+        with pytest.raises(RuntimeError):
+            dsm.assembled_bytes()
+
+    def test_block_id_out_of_range(self) -> None:
+        dsm = DsmPkr(dsm_id=12)
+        with pytest.raises(ValueError):
+            dsm.add_block(14, bytes(9))
+
+    def test_block_wrong_length(self) -> None:
+        dsm = DsmPkr(dsm_id=12)
+        with pytest.raises(ValueError):
+            dsm.add_block(0, bytes(8))
+
+
+# ===========================================================================
+# DSM-PKR parser
+# ===========================================================================
+
+
+def _make_dsm_pkr_payload(
+    nb_dpk: int = 10,  # 11 blocks × 72 bits = 792 bits → 2 ITN nodes for P-256
+    mid: int = 3,
+    npkid: int = 7,
+    npkt: ECDSAType = ECDSAType.P256,
+    npk: bytes | None = None,
+    itn_nodes: list[bytes] | None = None,
+) -> bytes:
+    """Build a 126-byte DSM-PKR payload from field values."""
+    if npk is None:
+        npk = b"\xab" * (_PK_SIZE_BITS[npkt] // 8)
+    if itn_nodes is None:
+        # Derive expected node count from nb_dpk and key type
+        actual_bits = (nb_dpk + 1) * DSM_BLOCK_BITS
+        n_itn = (actual_bits - _DSM_PKR_FIXED_HEADER_BITS - _PK_SIZE_BITS[npkt]) // _ITN_NODE_BITS
+        itn_nodes = [bytes([i + 1]) * (_ITN_NODE_BITS // 8) for i in range(n_itn)]
+
+    bits: list[int] = []
+
+    def push(value: int, n: int) -> None:
+        for i in range(n - 1, -1, -1):
+            bits.append((value >> i) & 1)
+
+    def push_bytes(data: bytes) -> None:
+        for b in data:
+            push(b, 8)
+
+    push(nb_dpk, 4)
+    push(mid, 4)
+    push(npkid, 4)
+    push(npkt.value, 4)
+    push_bytes(npk)
+    for node in itn_nodes:
+        push_bytes(node)
+
+    # Pad to DSM_TOTAL_BITS
+    while len(bits) < DSM_TOTAL_BITS:
+        bits.append(0)
+
+    assert len(bits) == DSM_TOTAL_BITS
+    result = bytearray(DSM_TOTAL_BITS // 8)
+    for i, bit in enumerate(bits):
+        result[i // 8] |= bit << (7 - (i % 8))
+    return bytes(result)
+
+
+class TestParseDsmPkr:
+    def test_basic_fields_p256(self) -> None:
+        payload = _make_dsm_pkr_payload(nb_dpk=10, mid=3, npkid=7, npkt=ECDSAType.P256)
+        parsed = parse_dsm_pkr(payload)
+        assert parsed.nb_dpk == 10
+        assert parsed.mid == 3
+        assert parsed.npkid == 7
+        assert parsed.npkt == ECDSAType.P256
+
+    def test_npk_preserved_p256(self) -> None:
+        npk = bytes(range(33))
+        payload = _make_dsm_pkr_payload(npk=npk, npkt=ECDSAType.P256)
+        parsed = parse_dsm_pkr(payload)
+        assert parsed.npk == npk
+
+    def test_itn_count_p256(self) -> None:
+        # nb_dpk=10 → 11 × 72 = 792 bits; itn = (792-16-264)//256 = 2
+        payload = _make_dsm_pkr_payload(nb_dpk=10, npkt=ECDSAType.P256)
+        parsed = parse_dsm_pkr(payload)
+        assert len(parsed.itn) == 2
+
+    def test_itn_nodes_preserved(self) -> None:
+        node0 = b"\xde\xad" * 16  # 32 bytes
+        node1 = b"\xbe\xef" * 16
+        payload = _make_dsm_pkr_payload(nb_dpk=10, npkt=ECDSAType.P256, itn_nodes=[node0, node1])
+        parsed = parse_dsm_pkr(payload)
+        assert parsed.itn[0] == node0
+        assert parsed.itn[1] == node1
+
+    def test_zero_itn_nodes(self) -> None:
+        # nb_dpk=3 → 4 × 72 = 288 bits; itn = (288-16-264)//256 = 0
+        payload = _make_dsm_pkr_payload(nb_dpk=3, npkt=ECDSAType.P256, itn_nodes=[])
+        parsed = parse_dsm_pkr(payload)
+        assert parsed.itn == ()
+
+    def test_basic_fields_p521(self) -> None:
+        payload = _make_dsm_pkr_payload(nb_dpk=13, npkt=ECDSAType.P521)
+        parsed = parse_dsm_pkr(payload)
+        assert parsed.npkt == ECDSAType.P521
+        assert len(parsed.npk) == 67  # 536 bits / 8
+
+    def test_itn_count_p521(self) -> None:
+        # nb_dpk=13 → 14 × 72 = 1008 bits; itn = (1008-16-536)//256 = 1
+        payload = _make_dsm_pkr_payload(nb_dpk=13, npkt=ECDSAType.P521)
+        parsed = parse_dsm_pkr(payload)
+        assert len(parsed.itn) == 1
+
+    def test_wrong_payload_length_raises(self) -> None:
+        with pytest.raises(ValueError, match="Expected"):
+            parse_dsm_pkr(b"\x00" * 125)
+
+    def test_nb_dpk_out_of_range_raises(self) -> None:
+        # Manually craft a payload with NB_DPK=14 (out of range)
+        bad = bytearray(DSM_TOTAL_BITS // 8)
+        bad[0] = 0b11100000  # NB_DPK = 14 in top 4 bits
+        with pytest.raises(ValueError, match="NB_DPK"):
+            parse_dsm_pkr(bytes(bad))
+
+    def test_unknown_npkt_raises(self) -> None:
+        # NB_DPK=13, MID=0, NPKID=0, NPKT=15 (unknown)
+        bad = bytearray(DSM_TOTAL_BITS // 8)
+        bad[0] = (13 << 4) | 0  # NB_DPK=13, MID=0
+        bad[1] = (0 << 4) | 15  # NPKID=0, NPKT=15
+        with pytest.raises(ValueError, match="NPKT"):
+            parse_dsm_pkr(bytes(bad))
+
+    def test_payload_too_small_for_key_raises(self) -> None:
+        # NB_DPK=0 (1 block = 72 bits) with P-256 key (264 bits) — cannot fit
+        bad = bytearray(DSM_TOTAL_BITS // 8)
+        bad[0] = (0 << 4) | 0  # NB_DPK=0, MID=0
+        bad[1] = (0 << 4) | 0  # NPKID=0, NPKT=0 (P-256)
+        with pytest.raises(ValueError, match="insufficient"):
+            parse_dsm_pkr(bytes(bad))
+
+    def test_returns_parsed_pkr_instance(self) -> None:
+        payload = _make_dsm_pkr_payload()
+        parsed = parse_dsm_pkr(payload)
+        assert isinstance(parsed, ParsedPkr)
+
+
+# ---------------------------------------------------------------------------
+# parsed_pkr_to_message — bridge ParsedPkr → DSMPKRMessage
+# ---------------------------------------------------------------------------
+
+
+class TestParsedPkrToMessage:
+    """Tests for the ParsedPkr → DSMPKRMessage bridge function."""
+
+    def test_returns_dsm_pkr_message(self) -> None:
+        payload = _make_dsm_pkr_payload()
+        pkr = parse_dsm_pkr(payload)
+        msg = parsed_pkr_to_message(pkr)
+        assert isinstance(msg, DSMPKRMessage)
+
+    def test_pkid_maps_from_npkid(self) -> None:
+        payload = _make_dsm_pkr_payload(npkid=7)
+        pkr = parse_dsm_pkr(payload)
+        msg = parsed_pkr_to_message(pkr)
+        assert msg.pkid == 7
+
+    def test_pktype_maps_from_npkt_p256(self) -> None:
+        payload = _make_dsm_pkr_payload(npkt=ECDSAType.P256)
+        pkr = parse_dsm_pkr(payload)
+        msg = parsed_pkr_to_message(pkr)
+        assert msg.pktype is ECDSAType.P256
+
+    def test_pktype_maps_from_npkt_p521(self) -> None:
+        # P-521 needs more blocks; use NB_DPK=13 to ensure enough space
+        npk = bytes(range(_PK_SIZE_BITS[ECDSAType.P521] // 8))
+        p521_bits = _PK_SIZE_BITS[ECDSAType.P521]
+        n_itn = (14 * DSM_BLOCK_BITS - _DSM_PKR_FIXED_HEADER_BITS - p521_bits) // _ITN_NODE_BITS
+        itn_nodes = [bytes([i] * (_ITN_NODE_BITS // 8)) for i in range(n_itn)]
+        payload = _make_dsm_pkr_payload(
+            nb_dpk=13, npkt=ECDSAType.P521, npk=npk, itn_nodes=itn_nodes
+        )
+        pkr = parse_dsm_pkr(payload)
+        msg = parsed_pkr_to_message(pkr)
+        assert msg.pktype is ECDSAType.P521
+
+    def test_public_key_maps_from_npk(self) -> None:
+        npk = bytes(range(33))  # P-256 compressed key
+        payload = _make_dsm_pkr_payload(npk=npk)
+        pkr = parse_dsm_pkr(payload)
+        msg = parsed_pkr_to_message(pkr)
+        assert msg.public_key == npk
+
+    def test_merkle_nodes_maps_from_itn(self) -> None:
+        node0 = bytes([0xAA] * 32)
+        node1 = bytes([0xBB] * 32)
+        payload = _make_dsm_pkr_payload(itn_nodes=[node0, node1])
+        pkr = parse_dsm_pkr(payload)
+        msg = parsed_pkr_to_message(pkr)
+        assert msg.merkle_nodes == (node0, node1)
+
+    def test_empty_itn_gives_empty_merkle_nodes(self) -> None:
+        # NB_DPK=10, P-256: 792-bit actual → n_itn=2; force zero-ITN via custom payload
+        # Use a payload with NB_DPK=4 and P-256: actual=360b, npk=264b → n_itn=(360-16-264)//256=0
+        npk = bytes([0x02] * 33)
+        payload = _make_dsm_pkr_payload(nb_dpk=4, npk=npk, itn_nodes=[])
+        pkr = parse_dsm_pkr(payload)
+        msg = parsed_pkr_to_message(pkr)
+        assert msg.merkle_nodes == ()
+
+    def test_roundtrip_all_fields(self) -> None:
+        node = bytes([0xFF] * 32)
+        npk = bytes([0x03] * 33)
+        payload = _make_dsm_pkr_payload(
+            nb_dpk=10, npkid=3, npkt=ECDSAType.P256, npk=npk, itn_nodes=[node, node]
+        )
+        pkr = parse_dsm_pkr(payload)
+        msg = parsed_pkr_to_message(pkr)
+        assert msg.pkid == 3
+        assert msg.pktype is ECDSAType.P256
+        assert msg.public_key == npk
+        assert len(msg.merkle_nodes) == 2
+        assert msg.merkle_nodes[0] == node

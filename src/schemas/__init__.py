@@ -1,6 +1,11 @@
 """Typed schemas shared across all research modules (T200–T1700).
 
-This package replaces the monolithic schemas.py.
+This package is the **domain layer** — canonical Pydantic types for business
+logic, shared across routers, tests, CLI tools, and non-API modules.
+
+This package must NOT import from ``api.schemas.*`` (which is the API DTO
+layer).  Dependency direction: ``api.schemas → schemas`` (one-way only).
+
 All public names are re-exported here so that existing
 ``from schemas import X`` statements continue to work unchanged.
 """

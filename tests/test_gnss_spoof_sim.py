@@ -2,8 +2,8 @@
 
 Coverage:
     - SimConfig validation
-    - _init_constellation geometry
-    - _build_graph properties
+    - init_constellation geometry
+    - build_graph properties
     - matroid_forest_count invariants
     - chi_stat distribution under H0
     - select_subset connectivity
@@ -22,11 +22,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import app
+from gnss.math_utils import build_graph, init_constellation
 from gnss.spoof_sim import (
     _FISHER_DOF,
     SimConfig,
-    _build_graph,
-    _init_constellation,
     chi_stat,
     detection_score,
     fuse_score,
@@ -82,21 +81,21 @@ class TestSimConfig:
 
 class TestConstellation:
     def test_unit_vectors(self):
-        e = _init_constellation(6)
+        e = init_constellation(6)
         norms = np.linalg.norm(e, axis=1)
         np.testing.assert_allclose(norms, 1.0, atol=1e-12)
 
     def test_upper_hemisphere(self):
-        e = _init_constellation(8)
+        e = init_constellation(8)
         assert (e[:, 2] > 0).all(), "All satellites must have positive z (elevation > 0)"
 
     def test_shape(self):
         for n in [4, 6, 8, 10]:
-            assert _init_constellation(n).shape == (n, 3)
+            assert init_constellation(n).shape == (n, 3)
 
     def test_deterministic(self):
-        e1 = _init_constellation(6)
-        e2 = _init_constellation(6)
+        e1 = init_constellation(6)
+        e2 = init_constellation(6)
         np.testing.assert_array_equal(e1, e2)
 
 
@@ -108,30 +107,30 @@ class TestConstellation:
 class TestBuildGraph:
     def test_symmetric(self):
         d = np.array([0.1, -0.5, 0.3, 0.0, 0.2, -0.1])
-        W = _build_graph(d, sigma=1.0)
+        W = build_graph(d, sigma=1.0)
         np.testing.assert_allclose(W, W.T, atol=1e-14)
 
     def test_zero_diagonal(self):
         d = np.random.default_rng(1).normal(0, 0.3, 6)
-        W = _build_graph(d, sigma=1.0)
+        W = build_graph(d, sigma=1.0)
         np.testing.assert_array_equal(np.diag(W), np.zeros(6))
 
     def test_weights_in_01(self):
         d = np.random.default_rng(2).normal(0, 0.3, 6)
-        W = _build_graph(d, sigma=1.0)
+        W = build_graph(d, sigma=1.0)
         off_diag = W[~np.eye(6, dtype=bool)]
         assert (off_diag >= 0.0).all()
         assert (off_diag <= 1.0).all()
 
     def test_identical_doppler_gives_weight_one(self):
         d = np.ones(4) * 0.5
-        W = _build_graph(d, sigma=1.0)
+        W = build_graph(d, sigma=1.0)
         off_diag = W[~np.eye(4, dtype=bool)]
         np.testing.assert_allclose(off_diag, 1.0, atol=1e-14)
 
     def test_large_diff_gives_near_zero(self):
         d = np.array([0.0, 0.0, 10.0, 10.0])
-        W = _build_graph(d, sigma=1.0)
+        W = build_graph(d, sigma=1.0)
         # w_{02} = exp(-100) ≈ 0
         assert W[0, 2] < 1e-10
 
@@ -144,17 +143,17 @@ class TestBuildGraph:
 class TestMatroidForestCount:
     def test_returns_positive(self):
         d = np.array([0.1, -0.2, 0.05, 0.3])
-        W = _build_graph(d, sigma=1.5)
+        W = build_graph(d, sigma=1.5)
         assert matroid_forest_count(W) > 0.0
 
     def test_fully_connected_gt_disconnected(self):
         # Fully correlated Doppler → large weights → many high-weight forests
         d_same = np.zeros(4)
-        W_same = _build_graph(d_same, sigma=1.0)
+        W_same = build_graph(d_same, sigma=1.0)
         # Spoofed: dispersed Doppler → low weights → fewer forests
         rng = np.random.default_rng(5)
         d_spread = rng.normal(0, 5.0, 4)
-        W_spread = _build_graph(d_spread, sigma=1.0)
+        W_spread = build_graph(d_spread, sigma=1.0)
         assert matroid_forest_count(W_same) > matroid_forest_count(W_spread)
 
     def test_minimum_one_for_empty_graph(self):
@@ -164,7 +163,7 @@ class TestMatroidForestCount:
 
     def test_scalar_invariance(self):
         d = np.array([0.0, 0.1, -0.1, 0.2])
-        W = _build_graph(d, sigma=1.5)
+        W = build_graph(d, sigma=1.5)
         # Scaling W uniformly changes L → det(I+αL) changes predictably
         m1 = matroid_forest_count(W)
         assert m1 >= 1.0
@@ -208,14 +207,14 @@ class TestSelectSubset:
     def test_correct_size(self):
         rng = np.random.default_rng(10)
         d = rng.normal(0, 0.3, 6)
-        W = _build_graph(d, sigma=1.5)
+        W = build_graph(d, sigma=1.5)
         S = select_subset(W, k=4)
         assert len(S) == 4
 
     def test_valid_indices(self):
         rng = np.random.default_rng(11)
         d = rng.normal(0, 0.3, 6)
-        W = _build_graph(d, sigma=1.5)
+        W = build_graph(d, sigma=1.5)
         S = select_subset(W, k=4)
         assert all(0 <= i < 6 for i in S)
         assert len(set(S)) == 4
@@ -223,14 +222,14 @@ class TestSelectSubset:
     def test_sorted(self):
         rng = np.random.default_rng(12)
         d = rng.normal(0, 0.3, 6)
-        W = _build_graph(d, sigma=1.5)
+        W = build_graph(d, sigma=1.5)
         S = select_subset(W, k=4)
         assert S == sorted(S)
 
     def test_prefers_correlated_satellites(self):
         # Satellites 0-3 have similar Doppler; 4-5 are outliers
         d = np.array([0.0, 0.05, -0.05, 0.03, 5.0, -5.0])
-        W = _build_graph(d, sigma=1.0)
+        W = build_graph(d, sigma=1.0)
         S = select_subset(W, k=4)
         # Expect outlier satellites (4, 5) to be excluded
         assert 4 not in S
@@ -244,12 +243,12 @@ class TestSelectSubset:
 
 class TestWlsPvt:
     def setup_method(self):
-        self.los = _init_constellation(6)
+        self.los = init_constellation(6)
         self.rng = np.random.default_rng(20)
 
     def test_residuals_shape(self):
         d = self.rng.normal(0, 0.3, 6)
-        W = _build_graph(d, sigma=1.5)
+        W = build_graph(d, sigma=1.5)
         S = [0, 1, 2, 3]
         _, r = wls_pvt(self.los, d, W, S)
         assert r.shape == (4,)
@@ -257,14 +256,14 @@ class TestWlsPvt:
     def test_zero_input_zero_residuals(self):
         # With zero doppler deviation, WLS should give nearly zero residuals
         d = np.zeros(6)
-        W = _build_graph(d, sigma=1.5)
+        W = build_graph(d, sigma=1.5)
         S = [0, 1, 2, 3, 4]
         _, r = wls_pvt(self.los, d, W, S)
         np.testing.assert_allclose(r, 0.0, atol=1e-10)
 
     def test_score_nonneg(self):
         d = self.rng.normal(0, 0.3, 6)
-        W = _build_graph(d, sigma=1.5)
+        W = build_graph(d, sigma=1.5)
         S = [0, 1, 2, 3]
         _, r = wls_pvt(self.los, d, W, S)
         assert detection_score(r, W, S) >= 0.0
@@ -272,7 +271,7 @@ class TestWlsPvt:
     def test_attack_inflates_score(self):
         # Genuine
         d_genuine = self.rng.normal(0, 0.3, 6)
-        W = _build_graph(d_genuine, sigma=1.5)
+        W = build_graph(d_genuine, sigma=1.5)
         S = [0, 1, 2, 3]
         _, r0 = wls_pvt(self.los, d_genuine, W, S)
         score_genuine = detection_score(r0, W, S)
@@ -280,7 +279,7 @@ class TestWlsPvt:
         # Attacked (large differential bias)
         bias = np.array([3.0, -3.0, 3.0, -3.0, 3.0, -3.0])
         d_attacked = d_genuine + bias
-        W_att = _build_graph(d_attacked, sigma=1.5)
+        W_att = build_graph(d_attacked, sigma=1.5)
         _, r1 = wls_pvt(self.los, d_attacked, W_att, S)
         score_attacked = detection_score(r1, W_att, S)
 
@@ -444,10 +443,10 @@ class TestRunMcSimulationStats:
 class TestFuseScore:
     def setup_method(self):
         self.cfg = SimConfig(n_mc=1, n_epochs=10, n_sats=6, subset_size=4)
-        self.los = _init_constellation(6)
+        self.los = init_constellation(6)
         rng = np.random.default_rng(30)
         d = rng.normal(0, 0.3, 6)
-        self.W = _build_graph(d, sigma=1.5)
+        self.W = build_graph(d, sigma=1.5)
         self.S = select_subset(self.W, k=4)
         _, self.r = wls_pvt(self.los, d, self.W, self.S)
         m_t = matroid_forest_count(self.W)
@@ -467,7 +466,7 @@ class TestFuseScore:
         """Large differential bias should produce a much higher Fisher score."""
         rng = np.random.default_rng(31)
         d_att = rng.normal(0, 0.3, 6) + rng.normal(0, 3.0, 6)
-        W_att = _build_graph(d_att, sigma=1.5)
+        W_att = build_graph(d_att, sigma=1.5)
         S_att = select_subset(W_att, k=4)
         _, r_att = wls_pvt(self.los, d_att, W_att, S_att)
         m_att = matroid_forest_count(W_att)
@@ -488,7 +487,7 @@ class TestFuseScore:
         scores: list[float] = []
         for _ in range(500):
             d = rng.normal(0, 0.3, 6)
-            W = _build_graph(d, sigma=1.5)
+            W = build_graph(d, sigma=1.5)
             S = select_subset(W, k=4)
             _, r = wls_pvt(self.los, d, W, S)
             m_t = matroid_forest_count(W)
@@ -508,7 +507,7 @@ class TestSimulateTrial:
         from scipy.stats import chi2
 
         self.cfg = SimConfig(n_mc=1, n_epochs=20, n_sats=6, subset_size=4)
-        self.los = _init_constellation(6)
+        self.los = init_constellation(6)
         self.tau = float(chi2.ppf(1.0 - self.cfg.false_alarm_rate, df=_FISHER_DOF))
 
     def _run(self, attacked: bool, seed: int = 0):

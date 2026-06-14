@@ -1,0 +1,108 @@
+id: huh_twin
+name: HuhTwin Bayesian DCF Digital Twin
+category: valuation
+tags: [dcf, bayesian, conjugate, sensitivity, digital_twin, skill_graph]
+problem_type: >
+  Multi-scenario enterprise valuation with Bayesian belief updating and
+  regime-aware posterior inference.
+objective: >
+  Estimate intrinsic enterprise value under uncertainty by combining a DCF
+  core (Gordon growth model + WACC discounting) with Normal-Normal conjugate
+  Bayesian updates and sensitivity analysis over key input dimensions.
+
+state_variables:
+  - "μ_t: posterior mean of the Bayesian-updated parameter (e.g., growth rate)"
+  - "σ_t: posterior standard deviation of the same parameter"
+  - "π_r: regime posterior vector — P(regime r | observations)"
+  - "EV: enterprise value computed from DCF"
+
+observables:
+  - "FCF_i: projected free cash flow for year i"
+  - "x_k: individual observations used in Bayesian update"
+  - "EV(θ): enterprise value as a function of input parameter θ"
+
+parameters:
+  - "base_fcf: base-year free cash flow"
+  - "growth_rate: annual FCF growth rate g"
+  - "wacc: weighted average cost of capital"
+  - "terminal_growth: perpetual growth rate for Gordon terminal value"
+  - "projection_years: number of explicit forecast periods"
+  - "μ_0: Normal prior mean for Bayesian update"
+  - "σ_0: Normal prior standard deviation"
+  - "σ_obs: known observation noise standard deviation"
+
+constraints:
+  - "wacc > terminal_growth (for Gordon terminal value to converge)"
+  - "σ_0 > 0, σ_obs > 0"
+  - "Σ_r π_r = 1 (regime posterior sums to 1)"
+
+uncertainty:
+  parameter_prior: "μ ~ N(μ_0, σ_0²)"
+  observation_model: "x_k ~ N(μ, σ_obs²)  (σ_obs known)"
+  regime_prior: "π_r  (discrete, user-supplied)"
+
+equations:
+  # DCF core
+  - "FCF_i = base_fcf · (1 + g)^i"
+  - "PV_explicit = Σ_{i=1}^{T} FCF_i / (1 + WACC)^i"
+  - "TV = FCF_T · (1 + g_term) / (WACC − g_term)"
+  - "EV = PV_explicit + TV / (1 + WACC)^T"
+  # Normal-Normal conjugate update
+  - "τ_n = 1/σ_0² + n/σ_obs²"
+  - "μ_n = (μ_0/σ_0² + Σx_k/σ_obs²) / τ_n"
+  - "σ_n = 1/√τ_n"
+  # Regime posterior (Bayes' theorem, discrete)
+  - "π_r^{post} ∝ p(data | r) · π_r^{prior}"
+  - "Σ_r π_r^{post} = 1"
+  # Sensitivity (one-way)
+  - "Δ_θ = EV(θ) / EV(θ_base) − 1"
+
+priors:
+  μ_0: "domain-supplied or loaded from configs/priors.yaml"
+  σ_0: "domain-supplied"
+  regime: "uniform or loaded from configs/priors.yaml [regime_priors]"
+
+loss_function: "Variance of EV across scenarios + Frobenius norm of sensitivity grid"
+
+solver: >
+  1. DCF closed-form (Gordon terminal value).
+  2. Normal-Normal closed-form posterior update (no MCMC needed).
+  3. Discrete Bayes' theorem for regime posterior.
+  4. Sensitivity: grid evaluation over parameter ranges.
+
+outputs:
+  - "enterprise_value: point estimate EV"
+  - "posterior_mean: μ_n after Bayesian update"
+  - "posterior_std: σ_n after Bayesian update"
+  - "regime_posterior: {regime_name: probability} dict"
+  - "sensitivity_table: list[SensitivityPoint] (variable, value, EV, pct_change)"
+  - "sensitivity_grid: list[SensitivityGridPoint] (two-way grid)"
+
+assumptions:
+  - "FCF grows at a constant rate g during the explicit forecast period."
+  - "Terminal value uses the Gordon growth model (constant perpetual growth)."
+  - "Observation noise σ_obs is known (not inferred)."
+  - "Regime likelihoods p(data | r) are supplied by the caller."
+  - "All currency values are in consistent units (e.g., USD millions)."
+
+evidence_needed:
+  - "base_fcf, growth_rate, wacc, terminal_growth, projection_years"
+  - "Prior parameters μ_0, σ_0 (from configs/priors.yaml or caller)"
+  - "Observations x_k and σ_obs for Bayesian update"
+  - "Regime prior probabilities and per-regime likelihoods"
+
+references:
+  - "Damodaran, A. (2012). Investment Valuation (3rd ed.). Wiley."
+  - "DeGroot, M.H. & Schervish, M.J. (2012). Probability and Statistics (4th ed.), §7.4 Normal-Normal conjugate."
+  - "Gordon, M.J. (1959). Dividends, earnings, and stock prices. Review of Economics and Statistics, 41(2), 99-105."
+
+implementation:
+  files:
+    - src/huh_twin/valuation.py     # re-exports DCF primitives from valuation.dcf
+    - src/huh_twin/bayes_engine.py  # Normal-Normal update + regime posterior
+    - src/huh_twin/sensitivity.py   # one-way + two-way sensitivity analysis
+    - src/huh_twin/skill_classification.py  # SkillBasis enum + ClassifiedSkill
+  depends_on:
+    - valuation  # valuation.dcf.DCFInputs, dcf_valuation
+    - bayesian   # (separate web-facing layer; huh_twin uses its own conjugate engine)
+    - schemas    # domain types

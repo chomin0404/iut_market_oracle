@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from gnss.math_utils import _compute_roc
+from gnss.math_utils import compute_roc
 from schemas import MSRunResult, MSRunTrace, MSSimReport
 
 # ---------------------------------------------------------------------------
@@ -481,7 +481,7 @@ def run_ms_simulation(
     scores_arr = np.array(all_score_max, dtype=float)
     labels_arr = np.array(all_labels, dtype=int)
 
-    fpr_list, tpr_list, auc_val = _compute_roc(scores_arr, labels_arr)
+    fpr_list, tpr_list, auc_val = compute_roc(scores_arr, labels_arr)
 
     # Metrics at fixed detect_threshold
     p_fa = float(np.mean([r.alarm_any for r in nom_runs]))

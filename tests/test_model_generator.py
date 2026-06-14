@@ -95,7 +95,7 @@ class TestGenerateModelSpec:
         user_content = messages[0]["content"]
         assert "finance" in user_content.lower()
 
-    def test_missing_api_key_raises_key_error(self, monkeypatch) -> None:
+    def test_missing_api_key_raises_value_error(self, monkeypatch) -> None:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         # Re-import to avoid module-level caching issues.
         import importlib
@@ -104,7 +104,7 @@ class TestGenerateModelSpec:
 
         importlib.reload(gen_mod)
 
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             gen_mod.generate_model_spec(idea="Test idea")
 
     def test_no_tool_use_block_raises_value_error(self) -> None:

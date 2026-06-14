@@ -45,9 +45,6 @@ def init_constellation(n_sats: int) -> np.ndarray:
     return e  # (n_sats, 3)
 
 
-# Backward-compatible alias (deprecated — import init_constellation directly)
-_init_constellation = init_constellation
-
 
 # ---------------------------------------------------------------------------
 # Similarity graph
@@ -65,9 +62,6 @@ def build_graph(doppler_dev: np.ndarray, sigma: float) -> np.ndarray:
     return W
 
 
-# Backward-compatible alias (deprecated — import build_graph directly)
-_build_graph = build_graph
-
 
 # ---------------------------------------------------------------------------
 # WLS geometry matrix
@@ -84,9 +78,6 @@ def geometry_matrix(los: np.ndarray, S: list[int]) -> np.ndarray:
     scale = _L1_FREQ / _SPEED_OF_LIGHT
     return np.column_stack([-scale * los[S, :], -np.full(len(S), scale)])
 
-
-# Backward-compatible alias (deprecated — import geometry_matrix directly)
-_geometry_matrix = geometry_matrix
 
 
 # ---------------------------------------------------------------------------
@@ -127,5 +118,3 @@ def compute_roc(
     return fpr_arr.tolist(), tpr_arr.tolist(), max(0.0, min(1.0, auc))
 
 
-# Backward-compatible alias (deprecated — import compute_roc directly)
-_compute_roc = compute_roc

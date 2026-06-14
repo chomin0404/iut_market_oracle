@@ -119,7 +119,7 @@ class TestRecommendModels:
         user_content = call_kwargs["messages"][0]["content"]
         assert "kalman_filter" in user_content
 
-    def test_missing_api_key_raises_key_error(self, monkeypatch) -> None:
+    def test_missing_api_key_raises_value_error(self, monkeypatch) -> None:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         import importlib
 
@@ -127,7 +127,7 @@ class TestRecommendModels:
 
         importlib.reload(rec_mod)
 
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             rec_mod.recommend_models(description="Test")
 
     def test_no_tool_use_block_raises_value_error(self) -> None:

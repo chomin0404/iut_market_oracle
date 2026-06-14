@@ -103,7 +103,9 @@ def recommend_models(
         ValueError: LLM did not call the tool or returned an unexpected structure.
         pydantic.ValidationError: Tool output fails ModelRecommendation validation.
     """
-    api_key = os.environ["ANTHROPIC_API_KEY"]
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
     client = anthropic.Anthropic(api_key=api_key)
 
     parts: list[str] = [f"Problem description: {description}"]

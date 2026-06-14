@@ -39,7 +39,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.stats import chi2
 
-from gnss.math_utils import _init_constellation
+from gnss.math_utils import init_constellation
 
 # ---------------------------------------------------------------------------
 # Stanford published parameters (DoA_prr_combinationStudy.m)
@@ -207,7 +207,7 @@ def run_chi2_raim_mc(
         params = StanfordParams()
 
     rng = np.random.default_rng(params.random_seed)
-    los = _init_constellation(params.n_sats)
+    los = init_constellation(params.n_sats)
     threshold = chi2_raim_threshold(params.n_sats, params.p_fa_max)
 
     false_alarms = 0

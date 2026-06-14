@@ -62,7 +62,7 @@ from gnss.layers import (
 from gnss.layers.integrity import _GMM_FAULT_THRESH  # shared threshold for pillar logic
 
 # Geometry / graph / ROC utilities (pure math, no simulation dependencies)
-from gnss.math_utils import _compute_roc, _init_constellation
+from gnss.math_utils import compute_roc, init_constellation
 
 # Simulation helpers used only in the MC benchmark path
 from gnss.spoof_sim import (
@@ -624,7 +624,7 @@ def run_resilience_simulation(
     if rng is None:
         rng = np.random.default_rng(config.random_seed)
 
-    los = _init_constellation(config.n_sats)
+    los = init_constellation(config.n_sats)
     elevations = np.arcsin(np.clip(los[:, 2], -1.0, 1.0))  # (n_sats,) [radians]
 
     confusion: list[list[int]] = [[0] * 4 for _ in range(4)]
@@ -663,7 +663,7 @@ def run_resilience_simulation(
 
     scores_arr = np.array(roc_scores)
     labels_arr = np.array(roc_labels)
-    _, _, auc = _compute_roc(scores_arr, labels_arr)
+    _, _, auc = compute_roc(scores_arr, labels_arr)
 
     # Detection and false-alarm rates from vote-based classification.
     # Using the confusion matrix (already computed) rather than a fixed 0.5 threshold on

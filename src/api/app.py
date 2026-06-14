@@ -149,6 +149,16 @@ _TAGS_METADATA = [
 _START_TIME = time.time()
 _RATE_LIMIT_RPM = int(os.environ.get("RATE_LIMIT_RPM", "0"))
 
+if _RATE_LIMIT_RPM > 0:
+    _log.warning(
+        "RATE_LIMIT_RPM=%d is enabled. "
+        "RateLimitMiddleware uses an in-process counter that is NOT shared "
+        "across Uvicorn workers. Run with --workers 1 to enforce the limit "
+        "correctly, or replace with a Redis-backed counter for multi-worker "
+        "deployments.",
+        _RATE_LIMIT_RPM,
+    )
+
 if not os.environ.get("ORACLE_API_KEY"):
     _log.warning(
         "ORACLE_API_KEY is not set — compute-intensive endpoints "

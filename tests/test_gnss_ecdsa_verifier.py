@@ -67,7 +67,7 @@ def _make_kroot(
         tag_size_bits=40,
         gst0=0,
         alpha=b"\x00" * 6,
-        kroot=b"\xAB" * 16,
+        kroot=b"\xab" * 16,
         ds=raw_sig,
         m_kroot_body=body,
     )
@@ -162,7 +162,7 @@ class TestVerifyKrootP256:
             alpha=kroot.alpha,
             kroot=kroot.kroot,
             ds=kroot.ds,
-            m_kroot_body=b"\xFF" * 40,
+            m_kroot_body=b"\xff" * 40,
         )
         v = ECDSAVerifier(ECDSAType.P256)
         assert v.verify_kroot(tampered, hdr, pub) is False
@@ -345,7 +345,7 @@ class TestVerifyPublicKeyMerkle:
         bad_pkr = DSMPKRMessage(
             pkid=pkr.pkid,
             pktype=pkr.pktype,
-            public_key=b"\xFF" * len(pkr.public_key),
+            public_key=b"\xff" * len(pkr.public_key),
             merkle_nodes=pkr.merkle_nodes,
         )
         v = ECDSAVerifier(ECDSAType.P256)
@@ -445,14 +445,14 @@ class TestMerkleDegenerate:
 class TestPktypeInLeaf:
     def test_different_pktype_gives_different_leaf(self):
         """Same key bytes with different pktype values must produce different leaf hashes."""
-        key_bytes = b"\xAB" * 65
+        key_bytes = b"\xab" * 65
         leaf_p256 = hashlib.sha256(bytes([0, ECDSAType.P256.value]) + key_bytes).digest()
         leaf_p521 = hashlib.sha256(bytes([0, ECDSAType.P521.value]) + key_bytes).digest()
         assert leaf_p256 != leaf_p521
 
     def test_pktype_value_included_in_leaf(self):
         """Verify that pktype.value (0 or 1) is used, not the enum object."""
-        key_bytes = b"\xCD" * 65
+        key_bytes = b"\xcd" * 65
         pkr = DSMPKRMessage(
             pkid=0,
             pktype=ECDSAType.P256,

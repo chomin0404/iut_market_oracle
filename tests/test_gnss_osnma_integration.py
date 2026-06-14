@@ -54,7 +54,7 @@ _CID: int = 2
 _KEY_BYTES: int = 16
 _TAG_BITS: int = 40
 _N_SF: int = 6  # number of simulated subframes
-_NAV_DATA: bytes = b"\xDE\xAD\xBE\xEF" * 4  # 16-byte dummy nav payload
+_NAV_DATA: bytes = b"\xde\xad\xbe\xef" * 4  # 16-byte dummy nav payload
 
 
 def _make_signed_kroot(priv_key, body: bytes = b"\x00" * 40) -> tuple[DSMKROOTMessage, int]:
@@ -175,9 +175,7 @@ class TestECDSAToChainHandoff:
         verifier = ECDSAVerifier(ECDSAType.P256)
         assert verifier.verify_kroot(kroot_msg, nma_hdr_byte, p256_priv.public_key())
 
-    def test_wrong_key_rejected_after_chain_derivation(
-        self, signed_kroot_pair, full_chain
-    ):
+    def test_wrong_key_rejected_after_chain_derivation(self, signed_kroot_pair, full_chain):
         """A different ECDSA key pair cannot verify the same signature."""
         _, nma_hdr_byte = signed_kroot_pair
         kroot_msg, _ = full_chain
@@ -335,12 +333,23 @@ class TestMacEngineAndChainVerifierConsistency:
         engine = OSNMAMacEngine(MACFunction.HMAC_SHA_256, tag_size_bits=_TAG_BITS)
         gst = _GST0 + SUBFRAME_DURATION_S
         tag = engine.compute_tag(
-            key=keys[1], nav_data=_NAV_DATA, prn_a=2, prn_d=2,
-            gst_sf=gst, adkd=ADKD.INAV_CED, ctr=0,
+            key=keys[1],
+            nav_data=_NAV_DATA,
+            prn_a=2,
+            prn_d=2,
+            gst_sf=gst,
+            adkd=ADKD.INAV_CED,
+            ctr=0,
         )
         assert engine.verify_tag(
-            received=tag, key=keys[1], nav_data=_NAV_DATA, prn_a=2, prn_d=2,
-            gst_sf=gst, adkd=ADKD.INAV_CED, ctr=0,
+            received=tag,
+            key=keys[1],
+            nav_data=_NAV_DATA,
+            prn_a=2,
+            prn_d=2,
+            gst_sf=gst,
+            adkd=ADKD.INAV_CED,
+            ctr=0,
         )
 
     def test_mac_engine_and_chain_mac_differ(self, full_chain):
@@ -349,13 +358,23 @@ class TestMacEngineAndChainVerifierConsistency:
         gst = _GST0 + SUBFRAME_DURATION_S
         engine = OSNMAMacEngine(MACFunction.HMAC_SHA_256, tag_size_bits=_TAG_BITS)
         engine_tag = engine.compute_tag(
-            key=keys[1], nav_data=_NAV_DATA, prn_a=1, prn_d=1,
-            gst_sf=gst, adkd=ADKD.INAV_CED, ctr=0,
+            key=keys[1],
+            nav_data=_NAV_DATA,
+            prn_a=1,
+            prn_d=1,
+            gst_sf=gst,
+            adkd=ADKD.INAV_CED,
+            ctr=0,
         )
         chain_tag = compute_chain_mac_tag(
-            key=keys[1], svid=1, gst_sf=gst,
-            adkd=ADKD_INAV_CED, cop=0, nma_status=NMA_STATUS_OPERATIONAL,
-            nav_data=_NAV_DATA, tag_size_bits=_TAG_BITS,
+            key=keys[1],
+            svid=1,
+            gst_sf=gst,
+            adkd=ADKD_INAV_CED,
+            cop=0,
+            nma_status=NMA_STATUS_OPERATIONAL,
+            nav_data=_NAV_DATA,
+            tag_size_bits=_TAG_BITS,
         )
         assert engine_tag != chain_tag, (
             "OSNMAMacEngine and compute_chain_mac_tag must use distinct MAC inputs"
@@ -366,12 +385,23 @@ class TestMacEngineAndChainVerifierConsistency:
         engine = OSNMAMacEngine(MACFunction.HMAC_SHA_256, tag_size_bits=_TAG_BITS)
         gst = _GST0 + SUBFRAME_DURATION_S
         tag = engine.compute_tag(
-            key=keys[1], nav_data=_NAV_DATA, prn_a=1, prn_d=1,
-            gst_sf=gst, adkd=ADKD.INAV_CED, ctr=0,
+            key=keys[1],
+            nav_data=_NAV_DATA,
+            prn_a=1,
+            prn_d=1,
+            gst_sf=gst,
+            adkd=ADKD.INAV_CED,
+            ctr=0,
         )
         assert not engine.verify_tag(
-            received=tag, key=keys[2], nav_data=_NAV_DATA, prn_a=1, prn_d=1,
-            gst_sf=gst, adkd=ADKD.INAV_CED, ctr=0,
+            received=tag,
+            key=keys[2],
+            nav_data=_NAV_DATA,
+            prn_a=1,
+            prn_d=1,
+            gst_sf=gst,
+            adkd=ADKD.INAV_CED,
+            ctr=0,
         )
 
 
@@ -413,6 +443,4 @@ class TestFullOSNMAPipeline:
 
         ecdsa_verifier = ECDSAVerifier(ECDSAType.P256)
         # Gate must reject
-        assert not ecdsa_verifier.verify_kroot(
-            bad_kroot, nma_hdr_byte, p256_priv.public_key()
-        )
+        assert not ecdsa_verifier.verify_kroot(bad_kroot, nma_hdr_byte, p256_priv.public_key())

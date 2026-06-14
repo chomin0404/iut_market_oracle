@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 from scipy.stats import chi2
 
-from gnss.math_utils import _init_constellation
+from gnss.math_utils import init_constellation
 from gnss.stanford_benchmark import (
     StanfordParams,
     chi2_raim_score,
@@ -42,7 +42,7 @@ from gnss.stanford_benchmark import (
 
 
 def _los_n12() -> np.ndarray:
-    return _init_constellation(12)
+    return init_constellation(12)
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,127 @@
+# Module dependency graph — editable source of truth.
+#
+# Format:
+#   <module>:
+#     depends_on: [list of modules this module imports from]
+#     description: one-line summary
+#
+# Rules:
+#   - "api" is the outermost layer; it imports from all domain modules.
+#   - Domain modules must NOT import from "api" or "api.schemas".
+#   - "schemas" is the canonical domain model layer (one-way: api.schemas → schemas).
+#   - "core" contains pure data structures shared by gnss sub-modules.
+#
+# Dependency direction:
+#   api → {domain modules} → schemas → (no deps)
+#   api.schemas → schemas (DTO wraps domain types)
+
+modules:
+
+  # ── Infrastructure / shared ────────────────────────────────────────────────
+
+  core:
+    depends_on: []
+    description: Pure data structures (DSMKROOTMessage, DSMPKRMessage, ECDSAType, etc.)
+
+  schemas:
+    depends_on: []
+    description: Canonical domain Pydantic types shared across all research modules.
+
+  # ── Domain modules ─────────────────────────────────────────────────────────
+
+  valuation:
+    depends_on: [schemas]
+    description: DCF, Gordon growth model, reverse DCF, scenario runner.
+
+  bayesian:
+    depends_on: [schemas]
+    description: Beta / Normal conjugate updates, posterior summaries.
+
+  graph:
+    depends_on: [schemas]
+    description: Matroid log-concavity, Fiedler eigenvalue, RMT spectral analysis.
+
+  twin:
+    depends_on: [schemas]
+    description: Markov regime switching, Gamma-Poisson market evolution.
+
+  exit:
+    depends_on: [schemas]
+    description: Exit option pricing, timing distributions, scenario comparison.
+
+  entropy:
+    depends_on: [schemas]
+    description: Shannon entropy, KL divergence, rolling change-rate alerts.
+
+  matroid:
+    depends_on: [schemas]
+    description: Matroid independence oracle and basis enumeration.
+
+  models:
+    depends_on: [schemas]
+    description: T1400 model registry, LLM recommendation, idea formalization.
+
+  strategy_twin:
+    depends_on: [schemas]
+    description: T1700 causal effect estimation, Black-Litterman views, macro environment.
+
+  yield_twin:
+    depends_on: [schemas]
+    description: T1600 GP surrogate (ARD RBF) + D-optimal DOE + Expected Improvement.
+
+  gnss:
+    depends_on: [core, schemas]
+    description: >
+      T1300–T1500 GNSS Resilience Twin: OSNMA/TESLA auth, spoof detection,
+      multi-sensor fusion, 10-layer probabilistic fault discrimination.
+
+  huh_twin:
+    depends_on: [valuation, bayesian, schemas]
+    description: DCF wrapper, sensitivity analysis, skill graph, Normal-Normal Bayes engine.
+
+  # ── ModelForge automation ──────────────────────────────────────────────────
+
+  models.automation:
+    depends_on: [models, schemas]
+    description: Event handlers for registry_changed / forge_requested / verify_requested.
+
+  # ── API layer (outermost) ──────────────────────────────────────────────────
+
+  api.schemas:
+    depends_on: [schemas]
+    description: FastAPI request/response DTOs; imports domain types from schemas.
+
+  api:
+    depends_on:
+      - api.schemas
+      - valuation
+      - bayesian
+      - graph
+      - twin
+      - exit
+      - entropy
+      - matroid
+      - models
+      - strategy_twin
+      - yield_twin
+      - gnss
+      - huh_twin
+    description: FastAPI application — 16 routers under /api/v1/.
+
+# ── Forbidden edges (must never exist) ────────────────────────────────────────
+#
+# These import directions are explicitly prohibited to preserve the layering.
+#
+forbidden:
+  - from: schemas
+    to: api
+    reason: Domain layer must not depend on the API layer.
+  - from: schemas
+    to: api.schemas
+    reason: Domain layer must not depend on API DTOs.
+  - from: valuation
+    to: api
+    reason: Domain modules must not depend on the API layer.
+  - from: gnss
+    to: api
+    reason: Domain modules must not depend on the API layer.

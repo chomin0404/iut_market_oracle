@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from gnss.constants import _DOPPLER_NOISE_STD, _GRAPH_SIGMA
-from gnss.math_utils import _build_graph
+from gnss.math_utils import build_graph
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -116,7 +116,7 @@ class SpectralMonitor:
         Args:
             doppler_dev: (n,) Doppler residuals [Hz]
         """
-        W = _build_graph(doppler_dev, self._sigma)
+        W = build_graph(doppler_dev, self._sigma)
         L = np.diag(W.sum(axis=1)) - W
         ev = np.sort(np.linalg.eigvalsh(L))
 
@@ -182,7 +182,7 @@ class StructuralDependencyMonitor:
             doppler_dev:     (n,) Doppler residuals [Hz]
             fiedler_anomaly: True if ρ_F > 1.0 this epoch
         """
-        W = _build_graph(doppler_dev, self._graph_sigma)
+        W = build_graph(doppler_dev, self._graph_sigma)
 
         if fiedler_anomaly:
             self._streak += 1
@@ -270,7 +270,7 @@ class DuminilCopinPhaseMonitor:
         Args:
             doppler_dev: (n,) Doppler residuals [Hz]
         """
-        W = _build_graph(doppler_dev, self._graph_sigma)
+        W = build_graph(doppler_dev, self._graph_sigma)
         n = W.shape[0]
 
         lcc_curve = _lcc_curve_batch(W, self._tau_grid, n)

@@ -41,10 +41,10 @@ from gnss.constants import (
     _SPEED_OF_LIGHT,
 )
 from gnss.math_utils import (
-    _build_graph,
-    _compute_roc,
-    _geometry_matrix,
-    _init_constellation,
+    build_graph,
+    compute_roc,
+    geometry_matrix,
+    init_constellation,
 )
 from schemas import MCSimReport, RunResult, RunTrace
 
@@ -243,7 +243,7 @@ def _build_features(meas: np.ndarray) -> np.ndarray:
 
 def _build_similarity_graph(feats: np.ndarray, sigma: float) -> SimilarityGraph:
     """Build SimilarityGraph from feature vector and kernel bandwidth."""
-    return SimilarityGraph(W=_build_graph(feats, sigma), features=feats)
+    return SimilarityGraph(W=build_graph(feats, sigma), features=feats)
 
 
 # ---------------------------------------------------------------------------
@@ -382,7 +382,7 @@ def wls_pvt(
         x_hat: (4,) state correction estimate.
         residuals: (|S|,) post-fit residuals  Δf_S − H_S · x̂.
     """
-    H = _geometry_matrix(los, S)
+    H = geometry_matrix(los, S)
     y = doppler_dev[S]
     w = W[np.ix_(S, S)].sum(axis=1) + 1e-9  # row-sum weights, avoid zero
     W_diag = np.diag(w)
@@ -667,7 +667,7 @@ def _build_mc_report(
     scores_arr = np.array(all_scores, dtype=float)
     labels_arr = np.array(all_labels, dtype=int)
 
-    fpr_list, tpr_list, auc = _compute_roc(scores_arr, labels_arr)
+    fpr_list, tpr_list, auc = compute_roc(scores_arr, labels_arr)
 
     pred = scores_arr >= tau
     tp = int((pred & (labels_arr == 1)).sum())
@@ -724,7 +724,7 @@ def run_mc_simulation(
     tau = float(_chi2_dist.ppf(1.0 - config.false_alarm_rate, df=_FISHER_DOF))
 
     # Fixed satellite geometry for all MC runs (deterministic Fibonacci lattice)
-    los = _init_constellation(config.n_sats)
+    los = init_constellation(config.n_sats)
 
     all_scores: list[float] = []
     all_labels: list[int] = []

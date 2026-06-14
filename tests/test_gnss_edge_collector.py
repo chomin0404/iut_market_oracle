@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 
 from gnss.edge_collector import EdgeArrays, EdgeCollector
+from gnss.math_utils import init_constellation
 from gnss.mvp import MVPPipeline, RawEpochData
-from gnss.spoof_sim import _init_constellation
 from schemas import FaultClass
 
 # ---------------------------------------------------------------------------
@@ -18,7 +18,7 @@ N_SATS = 6
 
 
 def _make_los(n: int = N_SATS) -> np.ndarray:
-    return _init_constellation(n)
+    return init_constellation(n)
 
 
 def _make_raw(

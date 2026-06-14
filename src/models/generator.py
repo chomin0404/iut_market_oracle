@@ -145,7 +145,9 @@ def generate_model_spec(
         ValueError: LLM did not call the tool or returned an unexpected response.
         pydantic.ValidationError: Tool output fails ModelSpec validation.
     """
-    api_key = os.environ["ANTHROPIC_API_KEY"]
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
     client = anthropic.Anthropic(api_key=api_key)
 
     user_content = f"Research idea: {idea}"

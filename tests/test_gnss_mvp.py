@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from gnss.math_utils import init_constellation
 from gnss.mvp import (
     _INS_WEIGHT_BY_CLASS,
     _MIN_SATS_REQUIRED,
@@ -17,7 +18,6 @@ from gnss.mvp import (
     TwinCore,
     TwinDiagnosis,
 )
-from gnss.spoof_sim import _init_constellation
 from schemas import FaultClass
 
 # ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ from schemas import FaultClass
 
 
 def _make_los(n: int = 6) -> np.ndarray:
-    return _init_constellation(n)
+    return init_constellation(n)
 
 
 def _nominal_doppler(n: int = 6, seed: int = 0) -> np.ndarray:

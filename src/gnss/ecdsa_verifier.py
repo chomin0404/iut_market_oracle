@@ -29,7 +29,7 @@ _log = logging.getLogger(__name__)
 
 # Raw signature sizes per curve (ICD §5.4.4 Table)
 _DS_BYTES: dict[ECDSAType, int] = {
-    ECDSAType.P256: 64,   # 32r + 32s
+    ECDSAType.P256: 64,  # 32r + 32s
     ECDSAType.P521: 132,  # 66r + 66s
 }
 _SCALAR_BYTES: dict[ECDSAType, int] = {
@@ -76,18 +76,14 @@ class ECDSAVerifier:
             署名が有効なら ``True``、無効または鍵の型が不一致なら ``False``。
         """
         if not self._check_key_curve(public_key):
-            _log.warning(
-                "verify_kroot: key curve mismatch for ecdsa_type=%s", self.ecdsa_type
-            )
+            _log.warning("verify_kroot: key curve mismatch for ecdsa_type=%s", self.ecdsa_type)
             return False
 
         scalar = _SCALAR_BYTES[self.ecdsa_type]
         ds = kroot.ds
         expected_len = scalar * 2
         if len(ds) != expected_len:
-            _log.warning(
-                "verify_kroot: ds length %d != expected %d", len(ds), expected_len
-            )
+            _log.warning("verify_kroot: ds length %d != expected %d", len(ds), expected_len)
             return False
 
         r = int.from_bytes(ds[:scalar], "big")
@@ -125,9 +121,7 @@ class ECDSAVerifier:
         Returns:
             Merkle 経路が ``merkle_root`` に到達すれば ``True``。
         """
-        leaf = hashlib.sha256(
-            bytes([pkr.pkid, pkr.pktype.value]) + pkr.public_key
-        ).digest()
+        leaf = hashlib.sha256(bytes([pkr.pkid, pkr.pktype.value]) + pkr.public_key).digest()
 
         node, idx = leaf, pkr.pkid
         for sibling in pkr.merkle_nodes:

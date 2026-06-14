@@ -10,7 +10,13 @@ LSTMDetector
     Supervised, sliding-window sequence.  Same feature vector over W epochs.
     Registry YAML: configs/model_registry/gnss_lstm_anomaly.yaml
 
-Both detectors expose a common interface:
+TransformerDetector
+    Supervised, sliding-window sequence with multi-head self-attention.
+    Same interface and feature vector as LSTMDetector.
+    Architecture: positional encoding → TransformerEncoder → CLS mean-pool → Linear(1).
+    Registry YAML: configs/model_registry/gnss_transformer_anomaly.yaml
+
+All detectors expose a common interface:
     fit(X, y)        — train (y ignored for IsolationForest)
     predict(X)       — return (alarm: np.ndarray[bool], score: np.ndarray[float])
     save(path) / load(path)  — persistence
@@ -27,6 +33,11 @@ LSTM_DROPOUT         dropout rate between layers
 LSTM_LR              Adam learning rate
 LSTM_EPOCHS          training epochs
 LSTM_BATCH           mini-batch size
+TF_D_MODEL           Transformer model dimension d_model
+TF_N_HEADS           number of attention heads
+TF_N_LAYERS          number of TransformerEncoder layers
+TF_DIM_FF            feedforward expansion dimension
+TF_DROPOUT           Transformer dropout rate
 """
 
 from __future__ import annotations
@@ -59,6 +70,16 @@ LSTM_DROPOUT: float = 0.2
 LSTM_LR: float = 1e-3
 LSTM_EPOCHS: int = 30
 LSTM_BATCH: int = 64
+
+# Transformer
+TF_D_MODEL: int = 64  # model dimension (must be divisible by TF_N_HEADS)
+TF_N_HEADS: int = 4  # number of attention heads
+TF_N_LAYERS: int = 2  # number of TransformerEncoderLayer stacks
+TF_DIM_FF: int = 128  # feedforward expansion dimension
+TF_DROPOUT: float = 0.1  # dropout inside transformer layers
+TF_LR: float = 1e-3
+TF_EPOCHS: int = 30
+TF_BATCH: int = 64
 
 # Decision threshold fallback when calibration data is absent
 _DEFAULT_IF_THRESHOLD: float = 0.0  # sklearn decision_function: <0 = anomaly
@@ -426,6 +447,269 @@ class LSTMDetector:
                 n_features=state["n_features"],
                 hidden_size=state["hidden_size"],
                 n_layers=state["n_layers"],
+                dropout=state["dropout"],
+            )
+            obj._net.load_state_dict(state["net_state"])
+        return obj
+
+
+# ---------------------------------------------------------------------------
+# Transformer network definition
+# ---------------------------------------------------------------------------
+
+
+class _TransformerNet(nn.Module):
+    """Multi-head self-attention Transformer binary classifier.
+
+    Architecture:
+        Input projection  : Linear(n_features → d_model)
+        Positional encoding: sinusoidal, added in-place
+        TransformerEncoder: n_layers × (MultiheadAttention + FFN)
+        Pooling           : mean over time dimension
+        Classifier        : Linear(d_model → 1)
+
+    Input:  (batch, W, n_features)
+    Output: (batch,) — logit for spoofing class
+    """
+
+    def __init__(
+        self,
+        n_features: int,
+        d_model: int = TF_D_MODEL,
+        n_heads: int = TF_N_HEADS,
+        n_layers: int = TF_N_LAYERS,
+        dim_feedforward: int = TF_DIM_FF,
+        dropout: float = TF_DROPOUT,
+    ) -> None:
+        super().__init__()
+        self.input_proj = nn.Linear(n_features, d_model)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=n_heads,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
+        self.classifier = nn.Linear(d_model, 1)
+
+        # Sinusoidal positional encoding buffer (computed lazily)
+        self._d_model = d_model
+
+    def _make_pe(self, seq_len: int, device: torch.device) -> torch.Tensor:
+        """Sinusoidal positional encoding of shape (1, seq_len, d_model)."""
+        position = torch.arange(seq_len, dtype=torch.float, device=device).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, self._d_model, 2, dtype=torch.float, device=device)
+            * (-torch.log(torch.tensor(10000.0)) / self._d_model)
+        )
+        pe = torch.zeros(seq_len, self._d_model, device=device)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term[: self._d_model // 2])
+        return pe.unsqueeze(0)  # (1, seq_len, d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (batch, W, n_features)
+        out = self.input_proj(x)  # (batch, W, d_model)
+        out = out + self._make_pe(out.size(1), out.device)  # add positional encoding
+        out = self.encoder(out)  # (batch, W, d_model)
+        out = out.mean(dim=1)  # (batch, d_model) — mean pool
+        return self.classifier(out).squeeze(-1)  # (batch,)
+
+
+# ---------------------------------------------------------------------------
+# Transformer detector
+# ---------------------------------------------------------------------------
+
+
+class TransformerDetector:
+    """Supervised GNSS spoofing detector using multi-head self-attention.
+
+    Exposes the same interface as LSTMDetector:
+        fit(X, y, run_ids)
+        calibrate_threshold(X, run_ids, target_far)
+        predict(X, run_ids) → (alarm, score)
+        save(path) / load(path)
+
+    Invariants:
+        - Trained on balanced sliding windows from spoof_sim output.
+        - Decision threshold calibrated to FAR < 1e-4 on held-out genuine windows.
+        - Reproducible: torch seed set from RANDOM_SEED in fit().
+    """
+
+    def __init__(
+        self,
+        n_features: int = 9,
+        window: int = LSTM_WINDOW,
+        d_model: int = TF_D_MODEL,
+        n_heads: int = TF_N_HEADS,
+        n_layers: int = TF_N_LAYERS,
+        dim_feedforward: int = TF_DIM_FF,
+        dropout: float = TF_DROPOUT,
+        lr: float = TF_LR,
+        n_epochs_train: int = TF_EPOCHS,
+        batch_size: int = TF_BATCH,
+        random_state: int = RANDOM_SEED,
+    ) -> None:
+        self._n_features = n_features
+        self._window = window
+        self._d_model = d_model
+        self._n_heads = n_heads
+        self._n_layers = n_layers
+        self._dim_feedforward = dim_feedforward
+        self._dropout = dropout
+        self._lr = lr
+        self._n_epochs_train = n_epochs_train
+        self._batch_size = batch_size
+        self._random_state = random_state
+        self._threshold: float = _DEFAULT_LSTM_THRESHOLD
+        self._net: _TransformerNet | None = None
+        self._device = torch.device("cpu")
+
+    def fit(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        run_ids: list[str] | None = None,
+    ) -> TransformerDetector:
+        """Train Transformer on sliding windows of shape (window, n_features).
+
+        Args:
+            X:       (N, n_features) float32 feature matrix.
+            y:       (N,) int64 labels {0=genuine, 1=spoofed}.
+            run_ids: (N,) list of run identifiers (prevents cross-run windows).
+        """
+        torch.manual_seed(self._random_state)
+
+        if run_ids is None:
+            run_ids = ["run_0"] * len(X)
+
+        X_win, y_win = _make_windows(X, y, run_ids, self._window)
+        self._n_features = X.shape[1]
+
+        self._net = _TransformerNet(
+            n_features=self._n_features,
+            d_model=self._d_model,
+            n_heads=self._n_heads,
+            n_layers=self._n_layers,
+            dim_feedforward=self._dim_feedforward,
+            dropout=self._dropout,
+        ).to(self._device)
+
+        optimizer = torch.optim.Adam(self._net.parameters(), lr=self._lr)
+        criterion = nn.BCEWithLogitsLoss()
+
+        X_t = torch.from_numpy(X_win).to(self._device)
+        y_t = torch.from_numpy(y_win.astype(np.float32)).to(self._device)
+
+        n_samples = len(X_t)
+        self._net.train()
+        rng_idx = np.random.default_rng(self._random_state)
+
+        for _ in range(self._n_epochs_train):
+            perm = rng_idx.permutation(n_samples)
+            for start in range(0, n_samples, self._batch_size):
+                idx = perm[start : start + self._batch_size]
+                logits = self._net(X_t[idx])
+                loss = criterion(logits, y_t[idx])
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+        return self
+
+    def calibrate_threshold(
+        self,
+        X: np.ndarray,
+        run_ids: list[str] | None = None,
+        target_far: float = 1e-4,
+    ) -> float:
+        """Calibrate decision threshold so FAR ≤ target_far on genuine windows."""
+        if self._net is None:
+            raise RuntimeError("Call fit() before calibrate_threshold().")
+        if run_ids is None:
+            run_ids = ["run_0"] * len(X)
+        y_dummy = np.zeros(len(X), dtype=np.int64)
+        X_win, _ = _make_windows(X, y_dummy, run_ids, self._window)
+        probs = self._predict_proba(X_win)
+        self._threshold = float(np.percentile(probs, 100.0 * (1.0 - target_far)))
+        return self._threshold
+
+    def _predict_proba(self, X_win: np.ndarray) -> np.ndarray:
+        if self._net is None:
+            raise RuntimeError("TransformerDetector has not been trained; call fit() first.")
+        self._net.eval()
+        with torch.no_grad():
+            X_t = torch.from_numpy(X_win.astype(np.float32)).to(self._device)
+            logits = self._net(X_t)
+            probs = torch.sigmoid(logits).cpu().numpy()
+        return probs.astype(np.float32)
+
+    def predict(
+        self,
+        X: np.ndarray,
+        run_ids: list[str] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Predict spoofing probability for each window.
+
+        Returns:
+            alarm: (M,) bool array.
+            score: (M,) float array — spoofing probability ∈ [0, 1].
+        """
+        if self._net is None:
+            raise RuntimeError("Call fit() before predict().")
+        if run_ids is None:
+            run_ids = ["run_0"] * len(X)
+        y_dummy = np.zeros(len(X), dtype=np.int64)
+        X_win, _ = _make_windows(X, y_dummy, run_ids, self._window)
+        probs = self._predict_proba(X_win)
+        alarm = probs >= self._threshold
+        return alarm, probs
+
+    def save(self, path: Path) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        state: dict[str, Any] = {
+            "n_features": self._n_features,
+            "window": self._window,
+            "d_model": self._d_model,
+            "n_heads": self._n_heads,
+            "n_layers": self._n_layers,
+            "dim_feedforward": self._dim_feedforward,
+            "dropout": self._dropout,
+            "lr": self._lr,
+            "n_epochs_train": self._n_epochs_train,
+            "batch_size": self._batch_size,
+            "random_state": self._random_state,
+            "threshold": self._threshold,
+            "net_state": self._net.state_dict() if self._net is not None else None,
+        }
+        torch.save(state, path)
+
+    @classmethod
+    def load(cls, path: Path) -> TransformerDetector:
+        state = torch.load(Path(path), map_location="cpu", weights_only=True)
+        obj = cls(
+            n_features=state["n_features"],
+            window=state["window"],
+            d_model=state["d_model"],
+            n_heads=state["n_heads"],
+            n_layers=state["n_layers"],
+            dim_feedforward=state["dim_feedforward"],
+            dropout=state["dropout"],
+            lr=state["lr"],
+            n_epochs_train=state["n_epochs_train"],
+            batch_size=state["batch_size"],
+            random_state=state["random_state"],
+        )
+        obj._threshold = state["threshold"]
+        if state["net_state"] is not None:
+            obj._net = _TransformerNet(
+                n_features=state["n_features"],
+                d_model=state["d_model"],
+                n_heads=state["n_heads"],
+                n_layers=state["n_layers"],
+                dim_feedforward=state["dim_feedforward"],
                 dropout=state["dropout"],
             )
             obj._net.load_state_dict(state["net_state"])

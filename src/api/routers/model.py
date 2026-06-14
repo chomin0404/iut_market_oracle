@@ -95,13 +95,10 @@ def recommend_model(
             signals=req.signals,
             registry_ids=registry_ids,
         )
-    except KeyError as exc:
-        _logger.exception("unexpected error")
-        raise HTTPException(
-            status_code=503,
-            detail=f"ANTHROPIC_API_KEY environment variable is not set: {exc}",
-        )
     except ValueError as exc:
+        if "ANTHROPIC_API_KEY" in str(exc):
+            _logger.warning("%s", exc)
+            raise HTTPException(status_code=503, detail=str(exc))
         _logger.error("%s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc))
     except (RuntimeError, OSError, AttributeError) as exc:
@@ -122,13 +119,10 @@ def generate_model(
         from models.generator import generate_model_spec
 
         return generate_model_spec(idea=req.idea, domain=req.domain)
-    except KeyError as exc:
-        _logger.exception("unexpected error")
-        raise HTTPException(
-            status_code=503,
-            detail=f"ANTHROPIC_API_KEY environment variable is not set: {exc}",
-        )
     except ValueError as exc:
+        if "ANTHROPIC_API_KEY" in str(exc):
+            _logger.warning("%s", exc)
+            raise HTTPException(status_code=503, detail=str(exc))
         _logger.error("%s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc))
     except (RuntimeError, OSError, AttributeError) as exc:

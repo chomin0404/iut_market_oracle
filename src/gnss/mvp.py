@@ -35,7 +35,7 @@ from gnss.action_engine import (
 )
 from gnss.cn0_detector import CN0AnomalyDetector, CN0AnomalyResult
 from gnss.constants import _DOPPLER_NOISE_STD, _GRAPH_SIGMA, _INS_VEL_STD
-from gnss.math_utils import _init_constellation
+from gnss.math_utils import init_constellation
 from gnss.resilience_twin import (
     EpochDiagnosis,
     ResilienceTwin,
@@ -481,7 +481,7 @@ class MVPPipeline:
 
     Usage::
 
-        los = _init_constellation(n_sats)
+        los = init_constellation(n_sats)
         pipeline = MVPPipeline(n_sats=6, los=los)
         for raw in epoch_stream:
             action = pipeline.step(raw)
@@ -500,7 +500,7 @@ class MVPPipeline:
         min_sats: int = _MIN_SATS_REQUIRED,
     ) -> None:
         if los is None:
-            los = _init_constellation(n_sats)
+            los = init_constellation(n_sats)
         self._receiver = ReceiverAgent(n_sats=n_sats, sqm_thresh=sqm_thresh)
         self._core = TwinCore(
             los=los,

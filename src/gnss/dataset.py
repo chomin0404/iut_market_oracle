@@ -20,7 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
-from gnss.spoof_sim import SimConfig, _init_constellation
+from gnss.math_utils import init_constellation
+from gnss.spoof_sim import SimConfig
 
 
 def generate_full_dataset(
@@ -61,7 +62,7 @@ def generate_full_dataset(
     )
 
     rng = np.random.default_rng(config.random_seed)
-    los = _init_constellation(config.n_sats)
+    los = init_constellation(config.n_sats)
 
     records: list[dict] = []
 

@@ -97,11 +97,13 @@ async def parse_idea(idea: IdeaInput, model: str = DEFAULT_MODEL) -> ParsedIdeaR
         and missing_information.
 
     Raises:
-        KeyError:              ANTHROPIC_API_KEY is not set.
+        ValueError:            ANTHROPIC_API_KEY is not set.
         ValueError:            LLM did not call the tool or returned unexpected structure.
         pydantic.ValidationError: Tool output fails ParsedIdeaResponse validation.
     """
-    api_key = os.environ["ANTHROPIC_API_KEY"]
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
     client = anthropic.AsyncAnthropic(api_key=api_key)
 
     user_content = (

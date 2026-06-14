@@ -5,7 +5,6 @@ Adapted from osnma_simulation.py (Galileo OSNMA SIS ICD v1.1 simplified model).
 Key components:
     TESLAKeyChain          — hash-chain key generation and verification
     OSNMAAuthority         — ECDSA-P256 root-key signing (simulated GSA)
-    RLWEAuthority          — Ring-LWE post-quantum root-key signing (from pqc.py)
     OSNMATransmitter       — per-satellite broadcaster
     OSNMAReceiver          — verifier with receipt-safety, MAC, and quantum fidelity checks
     SpoofingAttacker       — 5 attack models (4 TESLA + 1 key_compromise)
@@ -32,7 +31,8 @@ from cryptography.hazmat.primitives.asymmetric.utils import (
     encode_dss_signature,
 )
 
-from gnss.pqc import QUANTUM_FIDELITY_THRESHOLD, QuantumFidelityDetector, RLWEAuthority
+# pqc is a research-only module — import lazily inside the functions that use it
+# to keep this module importable without loading the Ring-LWE primitives at startup.
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -266,7 +266,7 @@ class OSNMAReceiver:
         root_epoch: int,
         authority: _AuthorityProtocol,
         eph_oracle: Callable[[int, int], bytes] | None = None,
-        fidelity_threshold: float = QUANTUM_FIDELITY_THRESHOLD,
+        fidelity_threshold: float = 0.85,  # mirrors pqc.QUANTUM_FIDELITY_THRESHOLD
     ) -> None:
         self._pubkey = public_key
         self._params = chain_params
@@ -275,7 +275,12 @@ class OSNMAReceiver:
         self._verified_keys: dict[int, bytes] = {}
         self._verified_buf_epochs: set[tuple[int, int]] = set()
         self._eph_oracle = eph_oracle
-        self._fidelity = QuantumFidelityDetector(fidelity_threshold) if eph_oracle else None
+        if eph_oracle:
+            from gnss.pqc import QuantumFidelityDetector  # lazy: research-only module
+
+            self._fidelity: object = QuantumFidelityDetector(fidelity_threshold)
+        else:
+            self._fidelity = None
         if authority.verify_root_sig(chain_root, root_epoch, chain_params, root_sig):
             self._verified_keys[root_epoch] = chain_root
 
@@ -557,6 +562,8 @@ def run_simulation(
     Returns:
         SimReport with detection metrics broken down by attack type.
     """
+    from gnss.pqc import RLWEAuthority  # lazy: research-only module
+
     rng = np.random.default_rng(seed)
     # RLWEAuthority: quantum-resistant replacement for OSNMAAuthority
     authority = RLWEAuthority(seed=seed)

@@ -192,10 +192,11 @@ class GPSurrogate:
 
         if best_theta is None:
             best_theta = np.zeros(n_params)
+        theta: np.ndarray = best_theta
 
-        signal_var = math.exp(best_theta[0]) ** 2  # type: ignore[index]
-        length_scales = tuple(float(v) for v in np.exp(best_theta[1 : d + 1]))  # type: ignore[index]
-        noise_var = math.exp(best_theta[d + 1]) ** 2  # type: ignore[index]
+        signal_var = math.exp(theta[0]) ** 2
+        length_scales = tuple(float(v) for v in np.exp(theta[1 : d + 1]))
+        noise_var = math.exp(theta[d + 1]) ** 2
 
         self._hyperparams = GPHyperparams(
             signal_var=signal_var,

@@ -16,7 +16,7 @@ import numpy as np
 from scipy.stats import chi2 as _chi2_dist
 
 from gnss.constants import _DOPPLER_NOISE_STD, _INS_VEL_STD
-from gnss.math_utils import _geometry_matrix
+from gnss.math_utils import geometry_matrix
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -207,7 +207,7 @@ class IMMKalman:
     def __init__(self, los: np.ndarray, noise_std: float = _DOPPLER_NOISE_STD) -> None:
         n_sats = len(los)
         self._n = n_sats
-        self._H = _geometry_matrix(los, list(range(n_sats)))
+        self._H = geometry_matrix(los, list(range(n_sats)))
         self._R = noise_std**2 * np.eye(n_sats)
 
         e3 = np.zeros(4)
@@ -373,7 +373,7 @@ class CoopRAIMLayer:
 
     def __init__(self, los: np.ndarray, noise_std: float = _DOPPLER_NOISE_STD) -> None:
         n = len(los)
-        H = _geometry_matrix(los, list(range(n)))
+        H = geometry_matrix(los, list(range(n)))
         try:
             HtH_inv = np.linalg.inv(H.T @ H)
             self._P_mat = np.eye(n) - H @ HtH_inv @ H.T
@@ -431,7 +431,7 @@ class HuhSubsetSelector:
 
     def __init__(self, los: np.ndarray, noise_std: float = _DOPPLER_NOISE_STD) -> None:
         n = len(los)
-        self._H_all = _geometry_matrix(los, list(range(n)))
+        self._H_all = geometry_matrix(los, list(range(n)))
         try:
             self._det_all = float(np.linalg.det(self._H_all.T @ self._H_all))
         except np.linalg.LinAlgError:

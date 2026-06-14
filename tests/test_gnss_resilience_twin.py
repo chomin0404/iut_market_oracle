@@ -7,6 +7,7 @@ import math
 import numpy as np
 import pytest
 
+from gnss.math_utils import init_constellation
 from gnss.resilience_twin import (
     _FAULT_CLASSES,
     DuminilCopinPhaseMonitor,
@@ -21,7 +22,6 @@ from gnss.resilience_twin import (
     _inject_multipath,
     run_resilience_simulation,
 )
-from gnss.spoof_sim import _init_constellation
 from schemas import FaultClass, ResilienceTwinReport
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ from schemas import FaultClass, ResilienceTwinReport
 
 
 def _make_los(n: int = 6) -> np.ndarray:
-    return _init_constellation(n)
+    return init_constellation(n)
 
 
 def _elevations(los: np.ndarray) -> np.ndarray:
