@@ -45,7 +45,6 @@ def init_constellation(n_sats: int) -> np.ndarray:
     return e  # (n_sats, 3)
 
 
-
 # ---------------------------------------------------------------------------
 # Similarity graph
 # ---------------------------------------------------------------------------
@@ -62,7 +61,6 @@ def build_graph(doppler_dev: np.ndarray, sigma: float) -> np.ndarray:
     return W
 
 
-
 # ---------------------------------------------------------------------------
 # WLS geometry matrix
 # ---------------------------------------------------------------------------
@@ -77,7 +75,6 @@ def geometry_matrix(los: np.ndarray, S: list[int]) -> np.ndarray:
     """
     scale = _L1_FREQ / _SPEED_OF_LIGHT
     return np.column_stack([-scale * los[S, :], -np.full(len(S), scale)])
-
 
 
 # ---------------------------------------------------------------------------
@@ -116,5 +113,3 @@ def compute_roc(
     order = np.argsort(fpr_arr)
     auc = float(np.trapezoid(tpr_arr[order], fpr_arr[order]))
     return fpr_arr.tolist(), tpr_arr.tolist(), max(0.0, min(1.0, auc))
-
-

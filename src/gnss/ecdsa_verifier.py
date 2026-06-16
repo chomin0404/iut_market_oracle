@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import logging
 
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric.ec import (
     ECDSA,
     SECP256R1,
@@ -99,7 +99,7 @@ class ECDSAVerifier:
         except InvalidSignature:
             _log.debug("verify_kroot: signature invalid")
             return False
-        except Exception as exc:
+        except (UnsupportedAlgorithm, ValueError, TypeError) as exc:
             _log.warning("verify_kroot: unexpected error — %s", exc)
             return False
 

@@ -28,6 +28,9 @@ filterwarnings = [
     # application code — and all tests pass cleanly.
     "ignore:coroutine 'dispatch' was never awaited:RuntimeWarning",
 ]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 
 [tool.ruff]
 line-length = 100
