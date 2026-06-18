@@ -1,6 +1,6 @@
-"""GNSS Resilience Twin (T1500).
+"""GNSS Resilience Twin (T1500) — MC simulation hub and backward-compatible re-export layer.
 
-4-pillar fault discrimination platform for drones and positioning equipment:
+4-pillar fault discrimination platform:
 
   ┌─────────────────────────────────────────────────────────────────────────────┐
   │  Pillar 1 — Authentication  OSNMA Galileo authentication coverage           │
@@ -9,13 +9,16 @@
   │  Pillar 4 — Intervention    Entropy fusion + 4-class posterior decision     │
   └─────────────────────────────────────────────────────────────────────────────┘
 
-Each pillar hosts its own layer classes (Layers 1–8) unchanged.
-ResilienceTwin orchestrates the pillar stack per epoch.
+Pillar classes and schema dataclasses live in dedicated sub-modules:
+    gnss.twin_pillars  — constants + AuthenticationPillar, IntegrityPillar,
+                          StructuralPillar, InterventionPillar, ResilienceTwin
+    gnss.twin_schemas  — AuthenticationScore, IntegrityScore, StructuralScore,
+                          EpochDiagnosis
 
-Output classes (FaultClass enum, index 0-3):
-  NOMINAL | MULTIPATH | HARDWARE_FAULT | SPOOFING
-
-MC simulation entry point: run_resilience_simulation()
+This module retains the MC simulation entry point (run_resilience_simulation)
+and the observation-driven entry point (run_twin_on_observations), and
+re-exports all names so existing ``from gnss.resilience_twin import ...`` call
+sites continue to work without modification.
 """
 
 from __future__ import annotations
@@ -25,10 +28,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from gnss.cn0_detector import CN0AnomalyResult
-
-# Shared signal constants (own source of truth, independent of simulation layer)
-from gnss.constants import (
+# ---------------------------------------------------------------------------
+# Re-exports — constants, layer classes, pillar classes, schema dataclasses
+# All noqa: F401 tags preserve backward-compatible import paths.
+# ---------------------------------------------------------------------------
+from gnss.constants import (  # noqa: F401
     _DIRICHLET_ALPHA,
     _DOPPLER_NOISE_STD,
     _GRAPH_SIGMA,
@@ -36,35 +40,15 @@ from gnss.constants import (
     _INS_VEL_STD,
     GMM_FAULT_THRESH,
 )
-
-# Layer classes and result types — defined in gnss.layers sub-package
-from gnss.layers import (
-    CoopRAIMLayer,
-    CoopRAIMResult,
+from gnss.layers import (  # noqa: F401
     DuminilCopinPhaseMonitor,
     FaultEntropyMonitor,
-    FaultEntropyResult,
     GMMRaim,
-    GMMResult,
-    HuhSelectionResult,
     HuhSubsetSelector,
     IMMKalman,
-    IMMResult,
-    INSCouplingLayer,
-    INSCouplingResult,
-    OSNMALayer,
-    OSNMALayerResult,
-    PhaseTransitionResult,
     SpectralMonitor,
-    SpectralResult,
-    StructuralDependencyMonitor,
-    StructuralMonitorResult,
 )
-
-# Geometry / graph / ROC utilities (pure math, no simulation dependencies)
 from gnss.math_utils import compute_roc, init_constellation
-
-# Simulation helpers used only in the MC benchmark path
 from gnss.spoof_sim import (
     _gen_genuine_measurements,
     _init_receiver,
@@ -72,352 +56,37 @@ from gnss.spoof_sim import (
     _propagate_state,
     _sample_attack_window,
 )
-from schemas import FaultClass, ResilienceTwinReport
-
-# ---------------------------------------------------------------------------
-# Module constants (pillar fusion weights + simulation parameters)
-# ---------------------------------------------------------------------------
-
-_EL_MIN_DEG: float = 5.0  # minimum elevation clamp [degrees]
-_EL_MIN_RAD: float = math.radians(_EL_MIN_DEG)
-
-_EPS: float = 1e-300
-
-_FUSE_SPOOF_FIEDLER: float = 0.50  # Fiedler-ratio weight in spoofing score
-_FUSE_SPOOF_RMT: float = 0.30  # RMT-anomaly weight in spoofing score
-_FUSE_MP_ELEV: float = 0.40  # elevation-correlation weight in multipath score
-
-# Fusion weights for layers 5–8 contributions to spoofing score
-_FUSE_INS_SPOOF: float = 0.10
-_FUSE_COOP_SPOOF: float = 0.15
-_FUSE_OSNMA_SPOOF: float = 0.40
-_FUSE_STRUCT_SPOOF: float = 0.05
-_FUSE_GMM_SPOOF_COMMON: float = 0.50
-_FUSE_PHASE_SPOOF: float = 0.10  # phase-transition alert weight in spoof score
-_FUSE_CN0_SPOOF: float = 0.20  # C/N0 anomaly (spread collapse / CUSUM / corr burst)
-
-_MP_NOISE_INFLATION: float = 2.0  # multipath noise amplitude [Hz]
-# 40× ensures E[P(detect)] ≈ 90% even for the worst eligible sat (el=24.6° → threshold≈2.2 Hz).
-_HW_BIAS_STD: float = 40.0 * _DOPPLER_NOISE_STD  # HW fault bias 1-σ [Hz]
-_HW_EL_MIN_DEG: float = 15.0  # min elevation [deg] for hw_fault sat selection
-
-# Ordered fault class list — index aligns with fault_posterior positions
-_FAULT_CLASSES: list[FaultClass] = [
-    FaultClass.NOMINAL,
-    FaultClass.MULTIPATH,
-    FaultClass.HARDWARE_FAULT,
-    FaultClass.SPOOFING,
-]
-
-# ---------------------------------------------------------------------------
-# Composite result dataclasses (pillar-level outputs)
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class AuthenticationScore:
-    """Pillar 1 — OSNMA Galileo authentication coverage score."""
-
-    auth_fraction: float  # fraction of authenticated satellites ∈ [0, 1]
-    p_spoofed: float  # 1 − auth_fraction (fusion signal)
-    alert: bool  # True if auth_fraction < threshold
-    osnma: OSNMALayerResult  # raw layer result
-
-
-@dataclass(frozen=True)
-class IntegrityScore:
-    """Pillar 2 — integrity-layer base fault posterior (GM-RAIM + IMM + INS + CoopRAIM + Huh)."""
-
-    base_posterior: tuple[float, float, float, float]  # [P_nom, P_mp, P_hw, P_spoof]
-    gmm: GMMResult
-    imm: IMMResult
-    ins: INSCouplingResult
-    coop_raim: CoopRAIMResult
-    huh: HuhSelectionResult  # Layer 9 — D-optimal satellite subset
-
-
-@dataclass(frozen=True)
-class StructuralScore:
-    """Pillar 3 — graph-structure anomaly intensity."""
-
-    structure_intensity: float  # max(ρ_F−1, 0) + rmt_anomaly
-    spectral: SpectralResult
-    structural: StructuralMonitorResult
-    phase: PhaseTransitionResult  # Layer 10 — Duminil-Copin percolation monitor
-
-
-@dataclass(frozen=True)
-class EpochDiagnosis:
-    """Per-epoch diagnostic output from ResilienceTwin (4-pillar architecture)."""
-
-    t: int
-    fault_posterior: tuple[float, float, float, float]  # [P_nom, P_mp, P_hw, P_spoof]
-    diagnosis: FaultClass
-    confidence: float  # max(fault_posterior)
-    entropy: FaultEntropyResult  # Pillar 4 — intervention
-    auth: AuthenticationScore  # Pillar 1 — authentication
-    integrity: IntegrityScore  # Pillar 2 — integrity
-    structure: StructuralScore  # Pillar 3 — structure
-    cn0_anomaly: CN0AnomalyResult | None = None  # C/N0 anomaly result; None if unavailable
-
-
-# ---------------------------------------------------------------------------
-# Pillar 1 — Authentication
-# ---------------------------------------------------------------------------
-
-
-class AuthenticationPillar:
-    """OSNMA Galileo authentication coverage (Pillar 1)."""
-
-    def __init__(self) -> None:
-        self._osnma = OSNMALayer()
-
-    def assess(self, osnma_auth: list[bool] | None) -> AuthenticationScore:
-        osnma = self._osnma.assess(osnma_auth)
-        return AuthenticationScore(
-            auth_fraction=osnma.auth_fraction,
-            p_spoofed=osnma.p_spoof_contribution,
-            alert=osnma.alert,
-            osnma=osnma,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Pillar 2 — Integrity
-# ---------------------------------------------------------------------------
-
-
-class IntegrityPillar:
-    """GM-RAIM + IMM-KF + INS coupling + Cooperative RAIM + Huh subset (Pillar 2).
-
-    Computes a base 4-class fault posterior from integrity signals only.
-    Structural and authentication signals are added by InterventionPillar.
-    """
-
-    def __init__(
-        self,
-        los: np.ndarray,
-        noise_std: float = _DOPPLER_NOISE_STD,
-        ins_noise_std: float = _INS_VEL_STD,
-    ) -> None:
-        self._noise_std = noise_std
-        self._gmm = GMMRaim(noise_std=noise_std)
-        self._imm = IMMKalman(los=los, noise_std=noise_std)
-        self._ins = INSCouplingLayer(noise_std=ins_noise_std)
-        self._coop_raim = CoopRAIMLayer(los=los, noise_std=noise_std)
-        self._huh = HuhSubsetSelector(los=los, noise_std=noise_std)
-
-    def assess(
-        self,
-        doppler_dev: np.ndarray,
-        elevations: np.ndarray,
-        ins_velocity: np.ndarray | None = None,
-    ) -> IntegrityScore:
-        gmm = self._gmm.classify(doppler_dev, elevations)
-        imm = self._imm.update(doppler_dev)
-        ins = self._ins.assess(imm.x_fused, ins_velocity)
-        coop_raim = self._coop_raim.assess(doppler_dev)
-        huh = self._huh.select(np.array(gmm.gamma) > GMM_FAULT_THRESH)
-
-        mu_nom, mu_mp, mu_spoof = imm.mode_weights
-        # Coherent-SNR spoofing indicator: meaconing adds the same b_common to ALL sats,
-        # so mean(dev) is large while var(dev) stays near noise_std².
-        #   SNR = n·mean² / var  →  ≈1 for single outlier (HW),  ≈2 for 2-sat multipath,
-        #                            ≫10 for common-mode meaconing.
-        # Threshold at SNR=5 rejects HW/multipath while detecting spoofing with
-        # |b_common| > sqrt(5·noise²/n) ≈ 0.27 Hz  →  P_D ≈ 91 % for b_common ~ N(0,2.5²).
-        n_s = len(doppler_dev)
-        mean_dev = float(np.mean(doppler_dev))
-        var_dev = max(float(np.var(doppler_dev)), self._noise_std**2)
-        coherent_snr = n_s * mean_dev**2 / var_dev
-        # Divisor 7: with diff_std=0.10 Hz, var_dev under spoofing ≈ 0.10 Hz²,
-        # so coherent_snr ≈ 60·b_common²; divisor=7 gives breakeven
-        # |b_common| ≈ 0.44 Hz → P(detect/epoch) ≈ 91% for b_common ~ N(0, 4.0²).
-        # Under nominal, var_dev ≈ noise_std² = 0.09 → coherent_snr ~ chi²(1),
-        # P(chi²(1) > 7·1.7) = P(chi²(1) > 11.9) ≈ 0.056% → P_FA stays ~0%.
-        coherent_score = min(coherent_snr / 7.0, 10.0)
-        s_spoof = (
-            mu_spoof
-            + _FUSE_INS_SPOOF * float(ins.alert)
-            + _FUSE_COOP_SPOOF * float(coop_raim.parity_alert or coop_raim.split_alert)
-            + _FUSE_GMM_SPOOF_COMMON * coherent_score
-        )
-        s_mp = mu_mp + _FUSE_MP_ELEV * gmm.elev_corr
-        s_hw = 1.0 if gmm.n_fault == 1 else 0.0
-        # Use IMM nominal weight directly; normalization handles class competition.
-        s_nom = mu_nom
-
-        raw = np.clip(np.array([s_nom, s_mp, s_hw, s_spoof], dtype=float), 0.0, None)
-        total = raw.sum()
-        if total < _EPS:
-            base: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
-        else:
-            bp = raw / total
-            base = (float(bp[0]), float(bp[1]), float(bp[2]), float(bp[3]))
-
-        return IntegrityScore(
-            base_posterior=base, gmm=gmm, imm=imm, ins=ins, coop_raim=coop_raim, huh=huh
-        )
-
-
-# ---------------------------------------------------------------------------
-# Pillar 3 — Structure
-# ---------------------------------------------------------------------------
-
-
-class StructuralPillar:
-    """Spectral graph monitor + structural dependency tracker + phase monitor (Pillar 3)."""
-
-    def __init__(
-        self,
-        n_sats: int,
-        noise_std: float = _DOPPLER_NOISE_STD,
-        graph_sigma: float = _GRAPH_SIGMA,
-    ) -> None:
-        self._spectral = SpectralMonitor(
-            n_sats=n_sats, noise_std=noise_std, graph_sigma=graph_sigma
-        )
-        self._structural = StructuralDependencyMonitor(noise_std=noise_std, graph_sigma=graph_sigma)
-        self._phase = DuminilCopinPhaseMonitor(graph_sigma=graph_sigma)
-
-    def update(self, doppler_dev: np.ndarray) -> StructuralScore:
-        spectral = self._spectral.analyze(doppler_dev)
-        structural = self._structural.update(doppler_dev, spectral.fiedler_ratio > 1.0)
-        phase = self._phase.update(doppler_dev)
-        structure_intensity = max(spectral.fiedler_ratio - 1.0, 0.0) + spectral.rmt_anomaly
-        return StructuralScore(
-            structure_intensity=structure_intensity,
-            spectral=spectral,
-            structural=structural,
-            phase=phase,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Pillar 4 — Intervention
-# ---------------------------------------------------------------------------
-
-
-class InterventionPillar:
-    """Entropy fusion + 4-class decision (Pillar 4).
-
-    Fuses the integrity base posterior with structural and authentication signals:
-
-        s_spoof += α_F·max(ρ_F−1,0)·C_s + α_R·rmt + α_O·p_osnma + α_S·I[struct_alert]
-    """
-
-    def __init__(self) -> None:
-        self._entropy = FaultEntropyMonitor()
-
-    def fuse(
-        self,
-        auth: AuthenticationScore,
-        integrity: IntegrityScore,
-        structure: StructuralScore,
-        cn0_anomaly: CN0AnomalyResult | None = None,
-    ) -> tuple[np.ndarray, FaultEntropyResult]:
-        """Compute final 4-class posterior and entropy alert.
-
-        C/N0 anomaly score contributes _FUSE_CN0_SPOOF * p_spoof_cn0 to the
-        spoofing signal when cn0_anomaly is available (non-None).
-
-        Returns:
-            (fp, entropy_result): fp is a (4,) normalized probability array.
-        """
-        p_nom, p_mp, p_hw, p_spoof = integrity.base_posterior
-
-        cn0_spoof_contrib = (
-            _FUSE_CN0_SPOOF * cn0_anomaly.p_spoof_cn0 if cn0_anomaly is not None else 0.0
-        )
-        s_spoof = (
-            p_spoof
-            + _FUSE_SPOOF_FIEDLER
-            * max(structure.spectral.fiedler_ratio - 1.0, 0.0)
-            * integrity.gmm.sign_corr
-            + _FUSE_SPOOF_RMT * structure.spectral.rmt_anomaly
-            + _FUSE_OSNMA_SPOOF * auth.p_spoofed
-            + _FUSE_STRUCT_SPOOF * float(structure.structural.alert)
-            + _FUSE_PHASE_SPOOF * float(structure.phase.phase_alert)
-            + cn0_spoof_contrib
-        )
-        s_mp = p_mp
-        s_hw = p_hw
-        # Use base nominal posterior directly; normalization handles competition.
-        s_nom = p_nom
-
-        raw = np.clip(np.array([s_nom, s_mp, s_hw, s_spoof], dtype=float), 0.0, None)
-        total = raw.sum()
-        fp = raw / total if total >= _EPS else np.array([1.0, 0.0, 0.0, 0.0])
-
-        entropy_result = self._entropy.update(fp)
-        return fp, entropy_result
-
-
-# ---------------------------------------------------------------------------
-# ResilienceTwin orchestrator
-# ---------------------------------------------------------------------------
-
-
-class ResilienceTwin:
-    """4-pillar GNSS fault discrimination platform (T1500).
-
-    Orchestrates Authentication → Integrity → Structure → Intervention pillars
-    to produce a 4-class fault posterior per epoch:
-
-        NOMINAL | MULTIPATH | HARDWARE_FAULT | SPOOFING
-    """
-
-    def __init__(
-        self,
-        los: np.ndarray,
-        noise_std: float = _DOPPLER_NOISE_STD,
-        graph_sigma: float = _GRAPH_SIGMA,
-        ins_noise_std: float = _INS_VEL_STD,
-    ) -> None:
-        n_sats = len(los)
-        self._elevations = np.arcsin(np.clip(los[:, 2], -1.0, 1.0))  # [radians]
-        self._auth = AuthenticationPillar()
-        self._integrity = IntegrityPillar(los=los, noise_std=noise_std, ins_noise_std=ins_noise_std)
-        self._structure = StructuralPillar(
-            n_sats=n_sats, noise_std=noise_std, graph_sigma=graph_sigma
-        )
-        self._intervention = InterventionPillar()
-
-    def step(
-        self,
-        doppler_dev: np.ndarray,
-        t: int = 0,
-        ins_velocity: np.ndarray | None = None,
-        osnma_auth: list[bool] | None = None,
-        cn0_anomaly: CN0AnomalyResult | None = None,
-    ) -> EpochDiagnosis:
-        """Process one epoch of Doppler residuals through the 4-pillar stack.
-
-        Args:
-            doppler_dev:  (n_sats,) Doppler residuals [Hz]
-            t:            Epoch index (informational only)
-            ins_velocity: (3,) external INS velocity deviation [m/s], or None
-            osnma_auth:   Per-satellite OSNMA authentication flags, or None
-            cn0_anomaly:  C/N0 anomaly result from CN0AnomalyDetector, or None
-        """
-        auth = self._auth.assess(osnma_auth)
-        integrity = self._integrity.assess(doppler_dev, self._elevations, ins_velocity)
-        structure = self._structure.update(doppler_dev)
-        fp, entropy_result = self._intervention.fuse(auth, integrity, structure, cn0_anomaly)
-
-        idx = int(np.argmax(fp))
-        return EpochDiagnosis(
-            t=t,
-            fault_posterior=(float(fp[0]), float(fp[1]), float(fp[2]), float(fp[3])),
-            diagnosis=_FAULT_CLASSES[idx],
-            confidence=float(fp[idx]),
-            entropy=entropy_result,
-            auth=auth,
-            integrity=integrity,
-            structure=structure,
-            cn0_anomaly=cn0_anomaly,
-        )
-
+from gnss.twin_pillars import (  # noqa: F401
+    _EL_MIN_DEG,
+    _EL_MIN_RAD,
+    _EPS,
+    _FAULT_CLASSES,
+    _FUSE_CN0_SPOOF,
+    _FUSE_COOP_SPOOF,
+    _FUSE_GMM_SPOOF_COMMON,
+    _FUSE_INS_SPOOF,
+    _FUSE_MP_ELEV,
+    _FUSE_OSNMA_SPOOF,
+    _FUSE_PHASE_SPOOF,
+    _FUSE_SPOOF_FIEDLER,
+    _FUSE_SPOOF_RMT,
+    _FUSE_STRUCT_SPOOF,
+    _HW_BIAS_STD,
+    _HW_EL_MIN_DEG,
+    _MP_NOISE_INFLATION,
+    AuthenticationPillar,
+    IntegrityPillar,
+    InterventionPillar,
+    ResilienceTwin,
+    StructuralPillar,
+)
+from gnss.twin_schemas import (  # noqa: F401
+    AuthenticationScore,
+    EpochDiagnosis,
+    IntegrityScore,
+    StructuralScore,
+)
+from schemas import FaultClass, ResilienceTwinReport  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Attack generators for MC simulation
@@ -520,8 +189,8 @@ def _simulate_trial_resilience(
 
     Returns:
         (true_idx, predicted_idx, max_fault_score, mean_epoch_confidence)
-        true_idx / predicted_idx: index into _FAULT_CLASSES (0–3)
-        max_fault_score:          max(P_mp, P_hw, P_spoof) across epochs (ROC signal)
+        true_idx / predicted_idx: index into _FAULT_CLASSES (0-3)
+        max_fault_score:          mean(P_fault) across epochs (ROC signal)
         mean_epoch_confidence:    mean of max(fault_posterior) across epochs
     """
     T = config.n_epochs
@@ -529,9 +198,8 @@ def _simulate_trial_resilience(
 
     vel, clock_drift = _init_receiver(rng)
 
-    # Trial-level fault parameters
-    # Restrict hw fault to higher-elevation sats: detection threshold = 3.10·σᵢ = 3.10·σ/sin(el).
-    # At el < 15° the threshold exceeds _HW_BIAS_STD, making detection unreliable.
+    # Restrict hw fault to higher-elevation sats: detection threshold = 3.10*sigma_i.
+    # At el < 15 deg the threshold exceeds _HW_BIAS_STD, making detection unreliable.
     _hw_el_thresh = math.radians(_HW_EL_MIN_DEG)
     hw_eligible = [i for i, el in enumerate(elevations) if el >= _hw_el_thresh]
     if not hw_eligible:
@@ -547,11 +215,9 @@ def _simulate_trial_resilience(
 
     for t in range(T):
         vel, clock_drift = _propagate_state(vel, clock_drift, rng)
-        # Model the receiver's GNSS-corrected velocity estimate: in a real system
-        # the KF continuously corrects vel_hat toward the true trajectory.
-        # Re-sampling fresh noise each epoch avoids the artificial O(√t) divergence
-        # from independent random walks, which would otherwise swamp fault signals
-        # (hw_bias ~1.5 Hz, spoof_bias ~2.5 Hz) by epoch 10 (~3 Hz background).
+        # Model the receiver GNSS-corrected velocity estimate: re-sampling fresh
+        # noise each epoch avoids O(sqrt(t)) random-walk divergence that would
+        # swamp fault signals by epoch 10.
         vel_hat = vel + rng.normal(0.0, _INS_VEL_STD, size=3)
         clock_drift_hat = clock_drift + rng.normal(0.0, _INS_CLOCK_STD)
 
@@ -584,17 +250,15 @@ def _simulate_trial_resilience(
     # the remaining ~2T/3 nominal epochs outvote the attack window.
     # Threshold detection: if enough epochs voted spoofing, declare the trial
     # as spoofing regardless of total-vote majority.
-    # T//10 threshold (≈8): P(window < 8) ≈ 11% for Dirichlet(2,2,2).
-    # Background spoof-vote rate under nominal is ~3%/epoch (Fiedler/RMT noise);
-    # threshold=5 would cause P(Bin(80,0.03)≥5)≈10% → P_FA≈10%.
-    # threshold=8 keeps P(Bin(80,0.03)≥8)≈0.3% ≈ 0% empirically.
+    # T//10 threshold (approx 8): P(window < 8) approx 11% for Dirichlet(2,2,2).
+    # Background spoof-vote rate under nominal is ~3%/epoch;
+    # threshold=8 keeps P(Bin(80,0.03)>=8) approx 0.3% empirically.
     _SPOOF_VOTE_THRESH = max(T // 10, 3)
     if vote_counts[3] >= _SPOOF_VOTE_THRESH:
         predicted_idx = 3  # SPOOFING detected via threshold
     else:
         predicted_idx = int(np.argmax(vote_counts))
-    # Mean over epochs suppresses single-epoch noise; max() over 80 epochs drove
-    # P_FA to 100% because any one epoch with score > 0.5 would trigger the alarm.
+    # Mean over epochs suppresses single-epoch noise.
     max_fault_score = float(np.mean(fault_scores))
     mean_ep_confidence = confidence_sum / T
 
@@ -659,16 +323,17 @@ def run_resilience_simulation(
         roc_scores.append(fault_score)
         confidence_sum += ep_conf
 
-    per_class_accuracy = {k: per_class_correct[k] / max(per_class_total[k], 1) for k in class_names}
+    per_class_accuracy = {
+        k: per_class_correct[k] / max(per_class_total[k], 1) for k in class_names
+    }
 
     scores_arr = np.array(roc_scores)
     labels_arr = np.array(roc_labels)
     _, _, auc = compute_roc(scores_arr, labels_arr)
 
     # Detection and false-alarm rates from vote-based classification.
-    # Using the confusion matrix (already computed) rather than a fixed 0.5 threshold on
-    # the continuous fault_score makes P_D/P_FA consistent with per_class_accuracy and
-    # avoids threshold-tuning artefacts.
+    # Using the confusion matrix makes P_D/P_FA consistent with per_class_accuracy
+    # and avoids threshold-tuning artefacts.
     #   P_FA = fraction of nominal trials classified as any fault class
     #   P_D  = fraction of fault trials classified as any non-nominal class
     n_nominal = per_class_total[class_names[0]]
@@ -712,25 +377,15 @@ def run_twin_on_observations(
     allowing higher-fidelity GM-RAIM elevation-adjusted noise when the receiver
     reports satellite elevations directly.
 
-    For near-real-time operation, call this function with a sliding window
-    (e.g., 30–120 epochs) as new observations arrive; the twin is stateless
-    across windows by design to guarantee reproducibility.
-
     Args:
         doppler_sequence: T-length list of (n_sats,) Doppler residual arrays [Hz].
-                          Δf_i = f_measured_i − f_predicted_i.
-        los:              (n_sats, 3) unit line-of-sight vectors (receiver → satellite).
-                          Used to build the IMM-KF geometry matrix H and to derive
-                          elevations if `elevations` is None.
-        elevations:       (n_sats,) elevation angles [radians].
-                          If None, derived as arcsin(clip(los[:, 2], −1, 1)).
-        noise_std:        Nominal Doppler noise 1-σ [Hz]. Default matches T1500 constants.
-        graph_sigma:      Gaussian kernel bandwidth σ [Hz]. Default matches T1500 constants.
-        ins_sequence:     T-length list of (3,) INS velocity deviations [m/s], or None per epoch.
-                          If None, the INS coupling layer uses chi²(3) self-test only.
-        osnma_sequence:   T-length list of per-satellite OSNMA authentication bool lists,
-                          or None per epoch. If None, defaults to fully authenticated.
-        ins_noise_std:    INS velocity noise 1-σ [m/s]. Default matches T1500 constants.
+        los:              (n_sats, 3) unit line-of-sight vectors (receiver to satellite).
+        elevations:       (n_sats,) elevation angles [radians]; derived from los if None.
+        noise_std:        Nominal Doppler noise 1-sigma [Hz].
+        graph_sigma:      Gaussian kernel bandwidth sigma [Hz].
+        ins_sequence:     T-length list of (3,) INS velocity deviations [m/s] or None.
+        osnma_sequence:   T-length list of per-satellite OSNMA bool lists or None.
+        ins_noise_std:    INS velocity noise 1-sigma [m/s].
 
     Returns:
         List of T EpochDiagnosis objects in input order.

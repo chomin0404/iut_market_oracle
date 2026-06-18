@@ -65,6 +65,8 @@ omit = [
     "src/gnss/__main__.py",
     "src/models/__main__.py",
     "src/fragmentation/__main__.py",
+    # Experimental / research-only modules — not part of production pipeline
+    "src/gnss/experimental/*",
 ]
 
 [tool.pyright]

@@ -6,6 +6,7 @@ or the structured ``gnss.layers.*`` namespace.
 """
 
 from gnss.layers.authentication import OSNMALayer, OSNMALayerResult
+from gnss.layers.correlation_monitor import CorrelationMonitor, CorrelationMonitorResult
 from gnss.layers.integrity import (
     CoopRAIMLayer,
     CoopRAIMResult,
@@ -19,6 +20,15 @@ from gnss.layers.integrity import (
     INSCouplingResult,
 )
 from gnss.layers.intervention import FaultEntropyMonitor, FaultEntropyResult
+from gnss.layers.sensor_fusion import (
+    BarometerResult,
+    FixedLagSmoother,
+    SensorFusionLayer,
+    SensorFusionResult,
+    VisualOdometryResult,
+    check_barometer,
+    check_visual_odometry,
+)
 from gnss.layers.structure import (
     DuminilCopinPhaseMonitor,
     PhaseTransitionResult,
@@ -33,6 +43,9 @@ __all__ = [
     # authentication
     "OSNMALayer",
     "OSNMALayerResult",
+    # correlation monitor (structure pillar)
+    "CorrelationMonitor",
+    "CorrelationMonitorResult",
     # integrity
     "CoopRAIMLayer",
     "CoopRAIMResult",
@@ -47,6 +60,14 @@ __all__ = [
     # intervention
     "FaultEntropyMonitor",
     "FaultEntropyResult",
+    # sensor fusion (integrity pillar)
+    "BarometerResult",
+    "FixedLagSmoother",
+    "SensorFusionLayer",
+    "SensorFusionResult",
+    "VisualOdometryResult",
+    "check_barometer",
+    "check_visual_odometry",
     # structure
     "DuminilCopinPhaseMonitor",
     "PhaseTransitionResult",
