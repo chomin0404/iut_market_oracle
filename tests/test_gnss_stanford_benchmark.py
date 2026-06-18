@@ -556,5 +556,5 @@ def test_resilience_twin_outperforms_chi2_raim_stanford() -> None:
         f"ResilienceTwin P_D={twin_result.p_d:.3f} should be >> "
         f"chi²-RAIM P_D={chi2_result.p_d:.3f} for coherent meaconing"
     )
-    # N=12 raises spectral/RMT background votes → P_FA ~10%; gate matches test_stanford_validation.py
+    # N=12: spectral/RMT votes raise P_FA ~10%; gate matches test_stanford_validation.py
     assert twin_result.p_fa <= 0.15, f"ResilienceTwin P_FA={twin_result.p_fa:.3f} must remain low"
