@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.stats import chi2 as _chi2_dist
 
-from gnss.constants import _DOPPLER_NOISE_STD, _INS_VEL_STD
+from gnss.constants import _DOPPLER_NOISE_STD, _INS_VEL_STD, GMM_FAULT_THRESH
 from gnss.math_utils import geometry_matrix
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ _EL_MIN_RAD: float = math.radians(_EL_MIN_DEG)
 # Layer 1 — GM-RAIM
 _GMM_FAULT_PRIOR: float = 0.05
 _GMM_FAULT_SCALE: float = 5.0
-_GMM_FAULT_THRESH: float = 0.5
+# GMM_FAULT_THRESH is imported from gnss.constants (shared with resilience_twin)
 
 # Layer 2 — IMM-KF
 _IMM_Q0: float = 0.001
@@ -61,7 +61,7 @@ class GMMResult:
     """Output of GM-RAIM per-epoch classification."""
 
     gamma: tuple[float, ...]  # per-satellite fault posterior γᵢ
-    n_fault: int  # satellites with γᵢ > _GMM_FAULT_THRESH
+    n_fault: int  # satellites with γᵢ > GMM_FAULT_THRESH
     sign_corr: float  # |mean(sign(Δf))| — common-bias (spoofing) indicator
     elev_corr: float  # |corr(|Δf|, 1/sin(el))| — multipath indicator
     raim_stat: float  # mean(γᵢ) — aggregate fault intensity
@@ -179,7 +179,7 @@ class GMMRaim:
 
         return GMMResult(
             gamma=tuple(float(g) for g in gamma),
-            n_fault=int(np.sum(gamma > _GMM_FAULT_THRESH)),
+            n_fault=int(np.sum(gamma > GMM_FAULT_THRESH)),
             sign_corr=sign_corr,
             elev_corr=elev_corr,
             raim_stat=float(gamma.mean()),
@@ -420,7 +420,7 @@ class CoopRAIMLayer:
 class HuhSubsetSelector:
     """D-optimal satellite subset selector via greedy max-det(H_Sᵀ H_S) (Layer 9).
 
-    Excludes satellites flagged as faulty by GM-RAIM (γᵢ > _GMM_FAULT_THRESH),
+    Excludes satellites flagged as faulty by GM-RAIM (γᵢ > GMM_FAULT_THRESH),
     retaining the healthy subset that maximises det(H_Sᵀ H_S).
 
     Theoretical basis: Huh-Katz (2012) — log-concavity of matroid independent-set

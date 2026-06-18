@@ -189,19 +189,24 @@ class MSSimReport(BaseModel):
 
 
 class FaultClass(str, Enum):
-    """4-class GNSS fault taxonomy for the Resilience Twin (T1500).
+    """4-class GNSS fault taxonomy — single canonical enum for all T1500 components.
 
     Index order [0..3] matches the fault_posterior array layout:
         0: NOMINAL        — receiver operating correctly
         1: MULTIPATH      — elevation-correlated range errors, no inter-sat coherence
         2: HARDWARE_FAULT — isolated single-satellite outlier
         3: SPOOFING       — coordinated cross-satellite bias
+
+    UNCERTAIN is reserved for decoders that cannot commit to a class (e.g. low
+    evidence, conflicting constraints).  It is never returned by the 5-layer
+    LayeredPipeline's FactorGraphDecoder under normal operation.
     """
 
     NOMINAL = "nominal"
     MULTIPATH = "multipath"
     HARDWARE_FAULT = "hardware_fault"
     SPOOFING = "spoofing"
+    UNCERTAIN = "uncertain"
 
 
 class ResilienceTwinReport(BaseModel):

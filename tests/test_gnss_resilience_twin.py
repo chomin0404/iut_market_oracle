@@ -256,8 +256,9 @@ class TestRunResilienceSimulation:
     def test_per_class_accuracy_all_present(self) -> None:
         cfg = ResilienceTwinConfig(n_mc=8, n_epochs=8, random_seed=1)
         report = run_resilience_simulation(cfg)
-        expected_keys = {fc.value for fc in FaultClass}
-        assert expected_keys == set(report.per_class_accuracy.keys())
+        # UNCERTAIN is a reserved value not produced by the MC simulation.
+        sim_classes = {fc.value for fc in FaultClass if fc != FaultClass.UNCERTAIN}
+        assert sim_classes == set(report.per_class_accuracy.keys())
 
     def test_fault_classes_constant_index(self) -> None:
         assert _FAULT_CLASSES[0] == FaultClass.NOMINAL

@@ -34,6 +34,7 @@ from gnss.constants import (
     _GRAPH_SIGMA,
     _INS_CLOCK_STD,
     _INS_VEL_STD,
+    GMM_FAULT_THRESH,
 )
 
 # Layer classes and result types — defined in gnss.layers sub-package
@@ -59,7 +60,6 @@ from gnss.layers import (
     StructuralDependencyMonitor,
     StructuralMonitorResult,
 )
-from gnss.layers.integrity import _GMM_FAULT_THRESH  # shared threshold for pillar logic
 
 # Geometry / graph / ROC utilities (pure math, no simulation dependencies)
 from gnss.math_utils import compute_roc, init_constellation
@@ -217,7 +217,7 @@ class IntegrityPillar:
         imm = self._imm.update(doppler_dev)
         ins = self._ins.assess(imm.x_fused, ins_velocity)
         coop_raim = self._coop_raim.assess(doppler_dev)
-        huh = self._huh.select(np.array(gmm.gamma) > _GMM_FAULT_THRESH)
+        huh = self._huh.select(np.array(gmm.gamma) > GMM_FAULT_THRESH)
 
         mu_nom, mu_mp, mu_spoof = imm.mode_weights
         # Coherent-SNR spoofing indicator: meaconing adds the same b_common to ALL sats,

@@ -58,6 +58,9 @@ known-first-party = [
 omit = [
     # Report generation script — requires full experiment state to run
     "src/report.py",
+    # GNSS visualization scripts — matplotlib output, not unit-testable
+    "src/gnss/report.py",
+    "src/gnss/validation_report.py",
     # CLI entry points — tested via subprocess, not importable unit tests
     "src/gnss/__main__.py",
     "src/models/__main__.py",

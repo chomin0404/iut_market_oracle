@@ -1,0 +1,93 @@
+id: gnss_layered_pipeline
+name: GNSS 5-Layer Defense Pipeline
+category: anomaly_detection
+tags: [gnss, spoofing, belief_propagation, factor_graph, layered_defense, t1500]
+problem_type: >
+  Hierarchical 5-layer GNSS fault classification from per-epoch Doppler observations
+  to a machine-verifiable AlarmCertificate with 4-class MAP decision.
+objective: >
+  Detect and classify GNSS faults (NOMINAL / MULTIPATH / HARDWARE_FAULT / SPOOFING)
+  with a traceable certificate; minimize false alarm rate while maximizing detection rate.
+
+state_variables:
+  - "v_i ∈ {0: genuine, 1: anomalous}: per-satellite binary fault variable (n satellites)"
+  - "log_odds_i ∈ ℝ: log-odds of v_i = anomalous after belief propagation"
+  - "G = (V, E): bipartite factor graph, V = satellite nodes, E = violated syndrome edges"
+
+observables:
+  - "doppler_hz: per-satellite Doppler frequency offset ∈ ℝ^n [Hz]"
+  - "raim_chi2: RAIM chi-squared test statistic ∈ ℝ_{≥0} (optional)"
+  - "cn0_db_hz: per-satellite carrier-to-noise density ∈ ℝ^n [dB-Hz] (optional)"
+  - "auth_states: per-satellite OSNMA authentication outcome ∈ {AUTHENTICATED, UNAUTHENTICATED, UNKNOWN}^n (optional)"
+
+parameters:
+  - "P_PRIOR_ANOMALOUS = 0.10: prior probability of satellite anomaly"
+  - "BP_BETA = 2.0: factor potential strength β in ψ_e = exp(β · Σ x_i)"
+  - "VIOLATION_STRENGTH_MAX = 5.0: clip cap for normalised violation magnitude"
+  - "RAIM_THRESHOLD = 9.488: chi²(0.95, df=4) RAIM test statistic threshold"
+  - "ELEVATION_CORR_THRESHOLD = 0.60: |corr(belief, −elevation)| threshold for MULTIPATH"
+  - "COHERENT_SNR_THRESHOLD = 5.0: coherent SNR threshold for cross-satellite Doppler test"
+
+equations:
+  - "Layer 1 — Signal: feature_vector_i = [doppler_hz_i, code_phase_i, carrier_phase_i, cn0_i, aoa_i, iq_phase_i]"
+  - "Layer 2 — Correspondence: coherent_SNR = n · mean(Δf)² / var(Δf); SPOOFED+AUTHENTICATED → incoherent"
+  - "Layer 3 — Syndrome Graph: SyndromeEdge violated iff value > threshold (most); CN0_COHERENCE iff value < threshold"
+  - "  digest = SHA-256(canonical JSON of node_a, node_b, constraint_type, value, threshold, epoch)"
+  - "Layer 4 — Decoder (log-linear BP, 1-pass exact):"
+  - "  Factor potential: ψ_e(x_{N(e)}) = exp(β · Σ_{i ∈ N(e)} x_i)"
+  - "  log_prior = log(P_prior / (1 − P_prior))"
+  - "  strength(e) = clip((value_e − threshold_e) / max(threshold_e, ε), 0, VIOLATION_STRENGTH_MAX)"
+  - "  log_odds(v_i = anomalous) = log_prior + β · Σ_{e: i ∈ N(e)} strength(e)"
+  - "  P(v_i = anomalous) = σ(log_odds_i) = 1 / (1 + exp(−log_odds_i))"
+  - "Layer 5 — Certificate: evidence_digest = SHA-256(epoch, run_id, decision, sorted(checks_failed), n_anomalous)"
+
+decision_logic:
+  - "GEOMETRY_RAIM active AND CROSS_SAT_DOPPLER not active → HARDWARE_FAULT (checked first)"
+  - "n_anomalous == 0 → NOMINAL"
+  - "n_anomalous == 1 → HARDWARE_FAULT"
+  - "n_anomalous ≥ 2 AND |corr(belief, −elevation)| > 0.60 → MULTIPATH"
+  - "n_anomalous ≥ 2 AND CROSS_SAT_DOPPLER active → SPOOFING"
+  - "n_anomalous ≥ 2 otherwise → SPOOFING (coordinated multi-satellite anomaly)"
+
+constraints:
+  - "SyndromeGraph is append-only: duplicate epoch raises ValueError"
+  - "process_epoch() epochs must be called with monotonically increasing indices"
+  - "n_satellites ≥ 1; doppler_hz length must match satellite_ids"
+  - "BP convergence is exact in 1 pass for the log-linear ψ_e potential class"
+  - "AlarmCertificate.is_valid(): non-NOMINAL decision requires non-empty checks_failed"
+
+solver: >
+  Log-linear sum-product belief propagation (Kschischang, Frey, Loeliger 2001).
+  One-pass exact for ψ(x) = exp(β · Σ xᵢ) because factor-to-variable messages
+  are independent of all other variable messages.
+
+outputs:
+  - "LayeredEpochResult.decoder.decision: FaultClass (4-class MAP decision)"
+  - "LayeredEpochResult.decoder.anomaly_beliefs: tuple[float, ...] ∈ [0,1]^n per satellite"
+  - "LayeredEpochResult.decoder.n_anomalous: int (satellites with P(anomalous) > 0.5)"
+  - "LayeredEpochResult.certificate: AlarmCertificate with evidence_digest (SHA-256)"
+  - "LayeredEpochResult.certificate.is_valid(): bool — structural integrity proof"
+
+implementation:
+  - "src/gnss/signal_layer.py — Layer 1"
+  - "src/gnss/correspondence_layer.py — Layer 2"
+  - "src/gnss/syndrome_graph.py — Layer 3"
+  - "src/gnss/decoder.py — Layer 4"
+  - "src/gnss/certificate.py — Layer 5"
+  - "src/gnss/layered_pipeline.py — Orchestrator"
+
+assumptions:
+  - "Doppler measurements are synchronous across all satellites within one epoch"
+  - "RAIM chi-squared statistic is computed externally (caller-supplied)"
+  - "Elevation angles are optional; absent → MULTIPATH branch is skipped"
+  - "OSNMA authentication state is optional; absent → AUTH_MISMATCH constraint inactive"
+
+evidence_needed:
+  - "Genuine scenario: coherent SNR < 5.0, no RAIM violation → NOMINAL"
+  - "Spoofing scenario: common-mode Doppler bias ≥ 5 Hz → CROSS_SAT_DOPPLER violation → SPOOFING"
+  - "Hardware fault: single-satellite outlier + RAIM chi² > 9.488 → GEOMETRY_RAIM → HARDWARE_FAULT"
+
+references:
+  - "Kschischang, F.R., Frey, B.J., Loeliger, H.A. (2001). Factor graphs and the sum-product algorithm. IEEE Trans. Inf. Theory 47(2):498–519."
+  - "Walter, T., Blanch, J., Joerger, M. (2019). Consideration of integrity. ION GNSS+ 2019."
+  - "EU GSC (2023). Galileo OSNMA ICD. Issue 1.1."

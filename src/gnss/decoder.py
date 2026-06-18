@@ -46,11 +46,11 @@ sum-product algorithm", IEEE Trans. Inf. Theory 47(2):498–519.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 
 import numpy as np
 
 from gnss.syndrome_graph import ConstraintType, SyndromeEdge
+from schemas.gnss import FaultClass
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -79,14 +79,10 @@ _GLOBAL_SATS: frozenset[str] = frozenset({"ALL", "CONSTELLATION"})
 # ---------------------------------------------------------------------------
 
 
-class DecisionClass(str, Enum):
-    """4-class GNSS fault taxonomy for the Decoder Layer."""
-
-    NOMINAL = "nominal"
-    MULTIPATH = "multipath"
-    HARDWARE_FAULT = "hardware_fault"
-    SPOOFING = "spoofing"
-    UNCERTAIN = "uncertain"
+# Re-export the canonical fault taxonomy from the schemas layer.
+# gnss.decoder imports are unchanged for downstream code; the single source
+# of truth is schemas.gnss.FaultClass.
+DecisionClass = FaultClass
 
 
 # ---------------------------------------------------------------------------

@@ -31,3 +31,9 @@ _INS_CLOCK_STD: float = 0.01  # m/s equivalent — INS clock error 1-σ
 # ---------------------------------------------------------------------------
 
 _DIRICHLET_ALPHA: float = 2.0  # symmetric Dirichlet concentration parameter
+
+# ---------------------------------------------------------------------------
+# GM-RAIM fault classification
+# ---------------------------------------------------------------------------
+
+GMM_FAULT_THRESH: float = 0.5  # per-satellite fault posterior threshold γᵢ > thresh → faulty
