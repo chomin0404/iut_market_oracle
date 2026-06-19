@@ -273,7 +273,9 @@ def run_report(
     #    Guard against duplicate entries when `make report` is re-run on the
     #    same day: reuse the existing experiment if the title already exists.
     base_result = next((r for r in results if r.scenario_name == "base"), results[0])
-    exp_title = f"DCF report — {generated_at.strftime('%Y-%m-%d')}"
+    # Use scenario_dir as stable dedup key so re-running with the same config
+    # never creates a new registry entry (date-based titles accumulated indefinitely).
+    exp_title = f"DCF report — {scenario_dir.name}"
     existing = next(
         (e for e in list_experiments(experiments_root) if e.title == exp_title),
         None,
@@ -286,7 +288,8 @@ def run_report(
             config_path=str(scenario_dir),
             tags=["dcf", "report", "automated"],
             summary=(
-                f"Automated report: {len(results)} scenarios. "
+                f"Automated DCF report ({generated_at.strftime('%Y-%m-%d')}): "
+                f"{len(results)} scenarios. "
                 f"Base EV = {base_result.value:,.0f} JPY millions."
             ),
             experiments_root=experiments_root,

@@ -25,3 +25,4 @@
 | exp-014 | DCF report — 2026-06-09 | 2026-06-09 12:16 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
 | exp-015 | DCF report — 2026-06-10 | 2026-06-10 11:06 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
 | exp-016 | DCF report — 2026-06-10 | 2026-06-10 11:53 | dcf, report, automated | Automated report: 3 scenarios. Base EV = 6,942 JPY millions. |
+| exp-017 | BX (Blackstone Inc.) ROIC Bayesian Evaluation | 2026-06-18 | roic, bayesian-network, dirichlet, bx, private-equity | ROICBayesNet (ESS=20) + 24 historical observations. Evidence: industry=high, mgmt=high, macro=medium, pricing=high, capalloc=high. E[ROIC score]=0.8846 → Grade A. Sensitivity: macro high/medium/low compared. Script: experiments/exp-017/bx_roic_eval.py |

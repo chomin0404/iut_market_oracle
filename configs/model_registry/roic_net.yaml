@@ -1,0 +1,95 @@
+id: roic_net
+name: ROIC Evaluation Bayesian Network
+category: valuation
+tags: [roic, bayesian-network, dirichlet, variable-elimination, enterprise-valuation]
+problem_type: >
+  Estimate P(roic_level | observable firm characteristics) via a 6-node DAG
+  with Dirichlet online updates from historical observations.
+objective: >
+  Given evidence on industry competitiveness, management efficiency, macro environment,
+  pricing power, and capital allocation, compute the posterior distribution over ROIC
+  quality states {high, medium, low} and an expected ROIC score in [0, 1].
+
+state_variables:
+  - "industry_competitiveness ∈ {high, medium, low}: structural moat / entry barriers"
+  - "management_efficiency    ∈ {high, medium, low}: FRE margin, CAGR of fee earnings"
+  - "macro_environment        ∈ {high, medium, low}: interest rates, deal-exit conditions"
+  - "pricing_power            ∈ {high, medium, low}: ability to maintain fee structures"
+  - "capital_allocation       ∈ {high, medium, low}: historical IRR, counter-cyclical timing"
+  - "roic_level               ∈ {high, medium, low}: target node — ROIC quality"
+
+observables:
+  - "industry_competitiveness: AUM scale, brand moat, LP retention rate"
+  - "management_efficiency: FRE margin %, fee-earnings CAGR %"
+  - "macro_environment: interest-rate regime, PE deal flow, credit spread"
+  - "pricing_power: management fee %, carried interest %, LP churn rate"
+  - "capital_allocation: vintage-year IRR %, Hilton/BREIT-class investment track record"
+
+parameters:
+  - "ROIC_WEIGHT_PRICING_POWER = 0.40: weight of pricing_power in ROIC composite score"
+  - "ROIC_WEIGHT_CAPITAL_ALLOCATION = 0.40: weight of capital_allocation in ROIC composite score"
+  - "ROIC_WEIGHT_MACRO_ENVIRONMENT = 0.20: weight of macro_environment in ROIC composite score"
+  - "equivalent_sample_size (ESS) = 10.0 (default): Dirichlet pseudocount per CPT row"
+  - "STATE_SCORE = {high: 1.0, medium: 0.5, low: 0.0}: numeric encoding of ROIC states"
+
+equations:
+  - "DAG edges: industry_competitiveness → pricing_power → roic_level"
+  - "           management_efficiency    → capital_allocation → roic_level"
+  - "           macro_environment        → roic_level"
+  - "ROIC CPT composite score: s = 0.40·v(pp) + 0.40·v(ca) + 0.20·v(macro)"
+  - "  where v(high)=1.0, v(medium)=0.5, v(low)=0.0"
+  - "Score bands → P(roic_level = [high, medium, low]):"
+  - "  s ≥ 0.70 → [0.75, 0.20, 0.05]"
+  - "  s ≥ 0.50 → [0.45, 0.40, 0.15]"
+  - "  s ≥ 0.30 → [0.20, 0.45, 0.35]"
+  - "  s  < 0.30 → [0.05, 0.25, 0.70]"
+  - "Dirichlet posterior mean: θ̂ = (α₀ + n) / Σ_row(α₀ + n)"
+  - "  α₀ = CPT_row × ESS (virtual observations per row)"
+  - "Expected ROIC score: E[s] = Σ_k STATE_SCORE[k] · P(roic_level=k | evidence)"
+
+decision_logic:
+  - "E[s] ≥ 0.65 → Grade A (High ROIC quality)"
+  - "E[s] ≥ 0.40 → Grade B (Medium ROIC quality)"
+  - "E[s]  < 0.40 → Grade C (Low ROIC quality)"
+
+constraints:
+  - "All 6 nodes share the same 3-state vocabulary {high, medium, low}"
+  - "CPT rows must sum to 1.0 (enforced by softmax-like normalization in Dirichlet update)"
+  - "equivalent_sample_size > 0 (ValueError otherwise)"
+  - "Evidence states must belong to {high, medium, low} (Pydantic Literal validation)"
+  - "Inference: Variable Elimination over full joint (exact, no approximation)"
+
+solver: >
+  Variable Elimination (exact discrete inference) via BayesianNetwork.update().
+  Dirichlet-Multinomial conjugate update: after observe_batch(), apply_dirichlet_posterior()
+  replaces each CPT row with the posterior mean θ̂.  One-shot update per batch; ESS controls
+  prior strength (inertia against new data).
+
+outputs:
+  - "roic_posterior: dict[str, float] — P(roic_level=s | evidence) for s ∈ {high, medium, low}"
+  - "expected_roic_score: float ∈ [0, 1] — E[STATE_SCORE | evidence]"
+  - "dominant_state: ROICState — argmax of posterior"
+  - "n_observations: int — cumulative Dirichlet observations absorbed"
+  - "grade: str — A/B/C classification from expected_roic_score thresholds"
+
+implementation:
+  - "src/bayesian/roic_net.py — ROICBayesNet class, _build_roic_cpt(), _roic_cpt_row()"
+  - "src/schemas/roic.py — ROICEvidence, ROICObservation, ROICEvaluation, STATE_SCORE"
+  - "tests/test_roic_net.py — 34 unit tests (structure, directional inference, Dirichlet update)"
+  - "experiments/exp-017/bx_roic_eval.py — BX (Blackstone Inc.) end-to-end evaluation"
+
+assumptions:
+  - "Conditional independence: pricing_power ⊥ capital_allocation | parents (DAG structure)"
+  - "Discrete approximation: continuous ROIC distributions collapsed to 3 ordinal states"
+  - "Root node priors are weakly informative (industry 30/45/25, mgmt 30/45/25, macro 35/40/25)"
+  - "Dirichlet update treats each observation as exchangeable given its parent states"
+
+evidence_needed:
+  - "All-high scenario: P(roic=high) ≥ 0.75 (CPT band [0.75, 0.20, 0.05])"
+  - "All-low scenario: P(roic=low) ≥ 0.70 (CPT band [0.05, 0.25, 0.70])"
+  - "50 high observations must raise P(roic=high) above uninformed baseline (Dirichlet test)"
+
+references:
+  - "Pearl, J. (1988). Probabilistic Reasoning in Intelligent Systems. Morgan Kaufmann."
+  - "Koller, D., Friedman, N. (2009). Probabilistic Graphical Models. MIT Press."
+  - "Gelman, A. et al. (2013). Bayesian Data Analysis, 3rd ed. CRC Press. (Dirichlet-Multinomial)"

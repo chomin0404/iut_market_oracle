@@ -31,13 +31,13 @@ from api.routers import (
     exit_,
     experiments,
     forge,
-    gnss,
     graph,
     ideas,
     matroid,
     model,
     report,
     risk,
+    roic,
     strategy,
     twin,
     valuation,
@@ -96,14 +96,6 @@ _TAGS_METADATA = [
         "description": "Report pipeline: generate charts, tables, and summary markdown.",
     },
     {
-        "name": "gnss",
-        "description": (
-            "GNSS Resilience Twin (T1300–T1500): OSNMA/TESLA authentication, "
-            "signal-level Monte Carlo spoofing detection, multi-sensor fusion, "
-            "and 10-layer probabilistic fault discrimination."
-        ),
-    },
-    {
         "name": "matroid",
         "description": "Matroid log-concavity checks and basis distribution analysis.",
     },
@@ -138,6 +130,13 @@ _TAGS_METADATA = [
         "description": (
             "Monte Carlo risk analysis: copula-based simulation, VaR/ES, "
             "exceedance curves, and bootstrap confidence bands."
+        ),
+    },
+    {
+        "name": "roic",
+        "description": (
+            "ROIC Bayesian Network (roic_net): 6-node DAG with Dirichlet online updates. "
+            "Returns P(roic_level | evidence) and an A/B/C quality grade."
         ),
     },
 ]
@@ -186,7 +185,6 @@ app = FastAPI(
         "- Digital twin simulation (Markov regime, Gamma-Poisson)\n"
         "- Exit strategy option pricing\n"
         "- Entropy monitoring & distribution-shift detection\n"
-        "- GNSS Resilience Twin — 10-layer spoofing/fault discrimination (T1300–T1500)\n"
         "- Yield twin GP surrogate + D-optimal design (T1600)\n"
         "- Strategy twin with causal inference (T1700)\n"
         "- ModelForge governance (YAML spec → verify → skeleton → trace → audit)\n\n"
@@ -243,18 +241,13 @@ _v1.include_router(twin.router, prefix="/twin", tags=["twin"])
 _v1.include_router(exit_.router, prefix="/exit", tags=["exit"])
 _v1.include_router(entropy.router, prefix="/entropy", tags=["entropy"])
 _v1.include_router(report.router, prefix="/report", tags=["report"])
-_v1.include_router(
-    gnss.router,
-    prefix="/gnss",
-    tags=["gnss"],
-    dependencies=[Depends(_require_oracle_key)],
-)
 _v1.include_router(matroid.router, prefix="/matroid", tags=["matroid"])
 _v1.include_router(model.router, prefix="/model", tags=["model"])
 _v1.include_router(ideas.router, prefix="/ideas", tags=["ideas"])
 _v1.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
 _v1.include_router(forge.router, prefix="/forge", tags=["forge"])
 _v1.include_router(yield_twin.router, prefix="/yield-twin", tags=["yield-twin"])
+_v1.include_router(roic.router, prefix="/roic", tags=["roic"])
 _v1.include_router(
     risk.router,
     prefix="/risk",

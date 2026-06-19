@@ -44,13 +44,15 @@ from valuation.dcf import (
 
 
 class TestDCFInputsValidation:
-    def test_initial_fcf_zero_raises(self) -> None:
-        with pytest.raises(ValueError, match="initial_fcf"):
-            DCFInputs(initial_fcf=0.0, growth_rate=0.05, discount_rate=0.10)
+    def test_initial_fcf_zero_is_valid(self) -> None:
+        # Zero FCF is valid at domain level (e.g. early-stage companies)
+        inputs = DCFInputs(initial_fcf=0.0, growth_rate=0.05, discount_rate=0.10)
+        assert inputs.initial_fcf == 0.0
 
-    def test_initial_fcf_negative_raises(self) -> None:
-        with pytest.raises(ValueError, match="initial_fcf"):
-            DCFInputs(initial_fcf=-1.0, growth_rate=0.05, discount_rate=0.10)
+    def test_initial_fcf_negative_is_valid(self) -> None:
+        # Negative FCF is valid at domain level (turnaround / startup scenarios)
+        inputs = DCFInputs(initial_fcf=-50.0, growth_rate=0.20, discount_rate=0.12)
+        assert inputs.initial_fcf == -50.0
 
     def test_discount_rate_at_minus_one_raises(self) -> None:
         with pytest.raises(ValueError, match="discount_rate"):
@@ -129,13 +131,16 @@ class TestProjectFCFs:
     def test_single_year(self) -> None:
         assert project_fcfs(200.0, 0.05, 1) == pytest.approx([210.0], rel=1e-12)
 
-    def test_initial_fcf_zero_raises(self) -> None:
-        with pytest.raises(ValueError, match="initial_fcf"):
-            project_fcfs(0.0, 0.05, 5)
+    def test_initial_fcf_zero_is_valid(self) -> None:
+        # zero initial FCF is allowed (turnaround companies with no current FCF)
+        fcfs = project_fcfs(0.0, 0.05, 5)
+        assert fcfs == [0.0] * 5
 
-    def test_initial_fcf_negative_raises(self) -> None:
-        with pytest.raises(ValueError, match="initial_fcf"):
-            project_fcfs(-100.0, 0.05, 5)
+    def test_initial_fcf_negative_is_valid(self) -> None:
+        # negative initial FCF is allowed (companies currently losing money)
+        fcfs = project_fcfs(-100.0, 0.05, 5)
+        assert len(fcfs) == 5
+        assert fcfs[0] < 0
 
     def test_years_zero_raises(self) -> None:
         with pytest.raises(ValueError, match="years"):
@@ -357,7 +362,8 @@ class TestReverseDCFImpliedGrowth:
             reverse_dcf_implied_growth(target_enterprise_value=-1.0, **self._BASE)
 
     def test_initial_fcf_zero_raises(self) -> None:
-        with pytest.raises(ValueError, match="initial_fcf"):
+        # initial_fcf=0 → all projected FCFs are 0 → gordon terminal value check fails
+        with pytest.raises(ValueError, match="final_year_fcf"):
             reverse_dcf_implied_growth(
                 target_enterprise_value=1000.0,
                 initial_fcf=0.0,

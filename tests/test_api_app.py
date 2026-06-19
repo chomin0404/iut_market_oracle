@@ -147,7 +147,7 @@ def test_openapi_schema_reachable() -> None:
 def test_openapi_has_tags() -> None:
     schema = client.get("/openapi.json").json()
     tag_names = {t["name"] for t in schema.get("tags", [])}
-    for expected in ("system", "valuation", "gnss", "forge", "bayesian"):
+    for expected in ("system", "valuation", "forge", "bayesian"):
         assert expected in tag_names, f"tag '{expected}' missing from OpenAPI schema"
 
 

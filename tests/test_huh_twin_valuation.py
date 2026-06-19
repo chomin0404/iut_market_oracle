@@ -117,11 +117,12 @@ def test_reverse_dcf_recovers_known_growth_rate() -> None:
 
 
 def test_invalid_dcf_inputs_raise_error() -> None:
+    # negative initial_fcf is now valid (turnaround companies); use forecast_years=0
     with pytest.raises(ValueError):
         DCFInputs(
-            initial_fcf=-1.0,
+            initial_fcf=100.0,
             growth_rate=0.10,
             discount_rate=0.10,
-            forecast_years=5,
+            forecast_years=0,
             terminal_growth_rate=0.03,
         )

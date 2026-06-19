@@ -12,8 +12,6 @@ class DCFInputs:
     terminal_growth_rate: float = 0.03
 
     def __post_init__(self) -> None:
-        if self.initial_fcf <= 0:
-            raise ValueError("initial_fcf must be positive.")
         if self.discount_rate <= -1.0:
             raise ValueError("discount_rate must be greater than -1.")
         if self.forecast_years <= 0:
@@ -32,8 +30,6 @@ class DCFResult:
 
 
 def project_fcfs(initial_fcf: float, growth_rate: float, years: int) -> list[float]:
-    if initial_fcf <= 0:
-        raise ValueError("initial_fcf must be positive.")
     if years <= 0:
         raise ValueError("years must be positive.")
 
@@ -108,8 +104,6 @@ def reverse_dcf_implied_growth(
 ) -> float:
     if target_enterprise_value <= 0:
         raise ValueError("target_enterprise_value must be positive.")
-    if initial_fcf <= 0:
-        raise ValueError("initial_fcf must be positive.")
     if terminal_growth_rate >= discount_rate:
         raise ValueError("terminal_growth_rate must be less than discount_rate.")
 

@@ -9,19 +9,17 @@
 #   - "api" is the outermost layer; it imports from all domain modules.
 #   - Domain modules must NOT import from "api" or "api.schemas".
 #   - "schemas" is the canonical domain model layer (one-way: api.schemas → schemas).
-#   - "core" contains pure data structures shared by gnss sub-modules.
 #
 # Dependency direction:
 #   api → {domain modules} → schemas → (no deps)
 #   api.schemas → schemas (DTO wraps domain types)
+#
+# Note: GNSS Resilience Twin (T1300-T1500) has been extracted to a separate
+# repository: iut-gnss-resilience-twin
 
 modules:
 
   # ── Infrastructure / shared ────────────────────────────────────────────────
-
-  core:
-    depends_on: []
-    description: Pure data structures (DSMKROOTMessage, DSMPKRMessage, ECDSAType, etc.)
 
   schemas:
     depends_on: []
@@ -69,12 +67,6 @@ modules:
     depends_on: [schemas]
     description: T1600 GP surrogate (ARD RBF) + D-optimal DOE + Expected Improvement.
 
-  gnss:
-    depends_on: [core, schemas]
-    description: >
-      T1300–T1500 GNSS Resilience Twin: OSNMA/TESLA auth, spoof detection,
-      multi-sensor fusion, 10-layer probabilistic fault discrimination.
-
   huh_twin:
     depends_on: [valuation, bayesian, schemas]
     description: DCF wrapper, sensitivity analysis, skill graph, Normal-Normal Bayes engine.
@@ -104,9 +96,8 @@ modules:
       - models
       - strategy_twin
       - yield_twin
-      - gnss
       - huh_twin
-    description: FastAPI application — 16 routers under /api/v1/.
+    description: FastAPI application — 15 routers under /api/v1/.
 
 # ── Forbidden edges (must never exist) ────────────────────────────────────────
 #
@@ -120,8 +111,5 @@ forbidden:
     to: api.schemas
     reason: Domain layer must not depend on API DTOs.
   - from: valuation
-    to: api
-    reason: Domain modules must not depend on the API layer.
-  - from: gnss
     to: api
     reason: Domain modules must not depend on the API layer.

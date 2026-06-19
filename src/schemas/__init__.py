@@ -29,20 +29,6 @@ from .exit import (
     TimingDistribution,
 )
 from .experiments import ExperimentMeta
-from .gnss import (
-    EpochReport,
-    FaultClass,
-    MCSimReport,
-    MSRunResult,
-    MSRunTrace,
-    MSSimReport,
-    ObservationEpoch,
-    RecommendedAction,
-    ResilienceTwinReport,
-    RunResult,
-    RunTrace,
-    TwinRunReport,
-)
 from .graph import (
     EdgeMeta,
     GraphInput,
@@ -69,6 +55,13 @@ from .models import (
     ModelSpec,
     ParsedIdeaResponse,
     ProblemStructure,
+)
+from .roic import (
+    STATE_SCORE,
+    ROICEvaluation,
+    ROICEvidence,
+    ROICObservation,
+    ROICState,
 )
 from .strategy import (
     BLResult,
@@ -116,19 +109,6 @@ __all__ = [
     "ExitType",
     "ExitValueSummary",
     "TimingDistribution",
-    # gnss
-    "EpochReport",
-    "FaultClass",
-    "MCSimReport",
-    "MSRunResult",
-    "MSRunTrace",
-    "MSSimReport",
-    "ObservationEpoch",
-    "RecommendedAction",
-    "ResilienceTwinReport",
-    "RunResult",
-    "RunTrace",
-    "TwinRunReport",
     # graph
     "EdgeMeta",
     "GraphInput",
@@ -152,6 +132,12 @@ __all__ = [
     "ModelSpec",
     "ParsedIdeaResponse",
     "ProblemStructure",
+    # roic
+    "ROICEvaluation",
+    "ROICEvidence",
+    "ROICObservation",
+    "ROICState",
+    "STATE_SCORE",
     # strategy
     "BLResult",
     "BLView",

@@ -1,1 +1,0 @@
-"""GNSS utilities sub-package."""
