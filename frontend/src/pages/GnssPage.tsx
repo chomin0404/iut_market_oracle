@@ -1,153 +1,67 @@
-import { useCallback, useState } from "react";
-import { postTwinRun, postResilienceSim, type ResilienceSimParams } from "../api";
-import type { TwinRunReport, ResilienceTwinReport, RecommendedAction } from "../types";
-import { StatusBanner } from "../components/StatusBanner";
-import { FaultPosteriorChart } from "../components/FaultPosteriorChart";
-import { ResilienceSimChart } from "../components/ResilienceSimChart";
-import { TwinRunPanel, ResilienceSimPanel } from "../components/ControlPanel";
-
-const SECTION_GAP = 20;
-
-function StatsRow({ report }: { report: TwinRunReport }) {
-  const stats = [
-    { label: "Mean Genuine", value: `${(report.mean_authenticity_genuine * 100).toFixed(1)}%` },
-    { label: "Mean Nominal", value: `${(report.mean_integrity_nominal * 100).toFixed(1)}%` },
-    { label: "Dominant", value: report.dominant_diagnosis },
-    { label: "Alert Epochs", value: report.alert_epochs.length.toString() },
-    {
-      label: "Spoof Window",
-      value: report.spoofing_window
-        ? `${report.spoofing_window[0]}–${report.spoofing_window[1]}`
-        : "none",
-    },
-  ];
-
-  return (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      {stats.map((s) => (
-        <div
-          key={s.label}
-          style={{
-            background: "#161616",
-            border: "1px solid #2a2a2a",
-            borderRadius: 6,
-            padding: "8px 16px",
-            flex: "1 1 100px",
-          }}
-        >
-          <div style={{ color: "#888", fontSize: 11 }}>{s.label}</div>
-          <div style={{ color: "#e0e0e0", fontSize: 15, fontWeight: 600 }}>{s.value}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ErrorBox({ message }: { message: string }) {
-  return (
-    <div
-      style={{
-        color: "#f87171",
-        background: "#1a0000",
-        border: "1px solid #f87171",
-        borderRadius: 6,
-        padding: "8px 16px",
-        marginBottom: SECTION_GAP,
-        fontSize: 13,
-      }}
-    >
-      Error: {message}
-    </div>
-  );
-}
+import { colors } from "../styles/tokens";
 
 export function GnssPage() {
-  const [twinReport, setTwinReport] = useState<TwinRunReport | null>(null);
-  const [twinError, setTwinError] = useState<string | null>(null);
-  const [twinLoading, setTwinLoading] = useState(false);
-
-  const [resReport, setResReport] = useState<ResilienceTwinReport | null>(null);
-  const [resError, setResError] = useState<string | null>(null);
-  const [resLoading, setResLoading] = useState(false);
-
-  const handleTwinRun = useCallback(
-    async (
-      obs: { epoch: number; doppler_residuals: number[] }[],
-      nSats: number,
-      noiseStd: number,
-      sigma: number
-    ) => {
-      setTwinLoading(true);
-      setTwinError(null);
-      try {
-        const report = await postTwinRun({
-          observations: obs,
-          n_sats: nSats,
-          doppler_noise_std: noiseStd,
-          graph_sigma: sigma,
-          save: false,
-        });
-        setTwinReport(report);
-      } catch (e) {
-        setTwinError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setTwinLoading(false);
-      }
-    },
-    []
-  );
-
-  const handleResSim = useCallback(async (params: ResilienceSimParams) => {
-    setResLoading(true);
-    setResError(null);
-    try {
-      const report = await postResilienceSim(params);
-      setResReport(report);
-    } catch (e) {
-      setResError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setResLoading(false);
-    }
-  }, []);
-
-  const worstAction: RecommendedAction = twinReport?.worst_action ?? "nominal";
-  const bannerReason = twinReport
-    ? `Dominant: ${twinReport.dominant_diagnosis} | ${twinReport.alert_epochs.length} alert epoch(s)`
-    : "No analysis run yet";
-
   return (
     <div>
-      <StatusBanner action={worstAction} reason={bannerReason} runId={twinReport?.run_id} />
-
-      <div style={{ marginBottom: SECTION_GAP }}>
-        <TwinRunPanel onSubmit={handleTwinRun} loading={twinLoading} />
+      <div style={{ marginBottom: 28 }}>
+        <h1
+          style={{
+            color: colors.text,
+            fontSize: 22,
+            fontWeight: 700,
+            margin: 0,
+            letterSpacing: 1,
+          }}
+        >
+          GNSS Resilience Twin
+        </h1>
+        <p style={{ color: colors.textFaint, fontSize: 13, margin: "6px 0 0" }}>
+          T1300 / T1350 / T1500
+        </p>
       </div>
 
-      {twinError && <ErrorBox message={twinError} />}
-
-      {twinReport && (
-        <div style={{ marginBottom: SECTION_GAP, display: "flex", flexDirection: "column", gap: 12 }}>
-          <StatsRow report={twinReport} />
-          <FaultPosteriorChart
-            epochs={twinReport.epoch_reports}
-            alertEpochs={twinReport.alert_epochs}
-          />
+      <div
+        style={{
+          background: colors.surface1,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 8,
+          padding: "24px 28px",
+          maxWidth: 560,
+        }}
+      >
+        <div
+          style={{
+            color: colors.accent.amber,
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 1.5,
+            marginBottom: 10,
+          }}
+        >
+          MODULE RELOCATED
         </div>
-      )}
-
-      <div style={{ borderTop: "1px solid #222", marginBottom: SECTION_GAP }} />
-
-      <div style={{ marginBottom: SECTION_GAP }}>
-        <ResilienceSimPanel onSubmit={handleResSim} loading={resLoading} />
+        <p style={{ color: colors.text, fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>
+          The GNSS Resilience Twin module has been extracted to a dedicated repository:
+        </p>
+        <code
+          style={{
+            display: "block",
+            color: colors.accent.green,
+            background: colors.bg,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 4,
+            padding: "8px 12px",
+            fontSize: 13,
+            marginBottom: 12,
+          }}
+        >
+          iut-gnss-resilience-twin
+        </code>
+        <p style={{ color: colors.textDim, fontSize: 12, margin: 0, lineHeight: 1.6 }}>
+          10-layer spoofing detection — TESLA chain, IMM-KF, spectral coherence, multi-sensor
+          fusion. Run the standalone API server from that repository to use this module.
+        </p>
       </div>
-
-      {resError && <ErrorBox message={resError} />}
-
-      {resReport && (
-        <div style={{ marginBottom: SECTION_GAP }}>
-          <ResilienceSimChart report={resReport} />
-        </div>
-      )}
     </div>
   );
 }
