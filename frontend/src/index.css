@@ -1,0 +1,48 @@
+/* Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Values mirror tokens.ts (colors.bg / colors.text) — CSS cannot import JS modules,
+   so this duplication is intentional and serves as a render-blocking fallback. */
+body {
+  background: #0a0a0a;
+  color: #e0e0e0;
+}
+
+/* Focus ring — visible only on keyboard navigation (improvement 11) */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid #4ade80;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+button:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Spinner keyframe (used by ui.tsx Spinner component) */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Sidebar overlay backdrop (mobile) */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
