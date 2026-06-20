@@ -95,149 +95,85 @@ export interface EntropyReport {
   alerts: EntropyAlert[];
 }
 
-// ---- /graph (T300) ----
+// ---- /gnss/twin/run ----
 
-export interface NodeMeta {
-  node_id: string;
-  label?: string;
-  category?: string;
-  weight?: number;
+export type RecommendedAction =
+  | "nominal"
+  | "monitor"
+  | "reduce_trust"
+  | "switch_source"
+  | "ground_immediately";
+
+export interface EpochReport {
+  epoch: number;
+  authenticity: { genuine: number; spoofed: number };
+  integrity: { nominal: number; degraded: number };
+  fault_posterior: {
+    nominal: number;
+    multipath: number;
+    hardware_fault: number;
+    spoofing: number;
+  };
+  diagnosis: string;
+  confidence: number;
+  recommended_action: RecommendedAction;
+  action_reason: string;
+  entropy_alert: boolean;
+  gmm_n_fault: number;
+  imm_spoof_weight: number;
+  spectral_fiedler_ratio: number;
+  ins_chi2_vel: number | null;
+  ins_alert: boolean;
+  coop_parity_chi2: number;
+  coop_parity_alert: boolean;
+  osnma_auth_fraction: number;
+  structural_fiedler_streak: number;
+  structural_alert: boolean;
+  auth_p_spoofed: number;
 }
 
-export interface EdgeMeta {
-  source: string;
-  target: string;
-  strength?: number;
-  label?: string;
+export interface TwinRunReport {
+  epoch_reports: EpochReport[];
+  n_epochs: number;
+  n_sats: number;
+  dominant_diagnosis: string;
+  mean_authenticity_genuine: number;
+  mean_integrity_nominal: number;
+  alert_epochs: number[];
+  spoofing_window: [number, number] | null;
+  worst_action: RecommendedAction;
+  run_id: string;
+  result_path?: string;
 }
 
-export interface GraphInput {
-  nodes: NodeMeta[];
-  edges: EdgeMeta[];
-}
+// ---- /gnss/resilience-sim ----
 
-export interface PortfolioMetrics {
-  basis_diversity: number;
-  dependency_concentration: number;
-  portfolio_score: number;
-  node_count: number;
-  edge_count: number;
-  notes: string;
-}
-
-// ---- /yield-twin (T1600) ----
-
-export interface FactorSpec {
-  name: string;
-  low: number;
-  high: number;
-}
-
-export interface ExperimentPoint {
-  factors: Record<string, number>;
-  yield_obs: number | null;
-}
-
-export interface YieldTwinRequest {
-  factor_specs: FactorSpec[];
-  observations?: ExperimentPoint[];
-  random_seed?: number;
-  n_candidates?: number;
-  ei_xi?: number;
-}
-
-export interface DOERecommendation {
-  factors: Record<string, number>;
-  expected_improvement: number;
-  d_leverage: number;
-  fusion_score: number;
-  predicted_yield: number;
-  predicted_std: number;
-  acquisition_mode: "doe_explore" | "fused" | "ei_exploit";
-  n_observations: number;
-}
-
-// ---- /strategy (T1700) ----
-
-export interface MoatScore {
-  dimension: string;
-  score: number;
-  weight?: number;
-}
-
-export interface BusinessUnit {
-  name: string;
-  initial_fcf: number;
-  growth_rate: number;
-  discount_rate: number;
-  terminal_growth_rate?: number;
-  forecast_years?: number;
-  moat_scores?: MoatScore[];
-}
-
-export interface MacroEnvironment {
-  gdp_growth: number;
-  risk_free_rate: number;
-  market_risk_premium: number;
-  inflation: number;
-  tam: number;
-}
-
-export interface BLView {
-  assets: Record<string, number>;
-  expected_return: number;
-  uncertainty: number;
-}
-
-export interface CausalEdge {
-  cause: string;
-  effect: string;
-  coefficient: number;
-}
-
-export interface StrategyRunRequest {
-  business_units: BusinessUnit[];
-  macro: MacroEnvironment;
-  views?: BLView[];
-  causal_edges?: CausalEdge[];
-  target_ev?: number;
-  net_debt?: number;
-  current_market_share?: number;
-  current_fcf_margin?: number;
-}
-
-export interface SOTPSegment {
-  unit_name: string;
-  enterprise_value: number;
-  moat_adjusted_wacc: number;
-  moat_adjusted_terminal_growth: number;
-  moat_composite_score: number;
-}
-
-export interface BLResult {
-  equilibrium_returns: Record<string, number>;
-  posterior_returns: Record<string, number>;
-  posterior_std: Record<string, number>;
-  market_weights: Record<string, number>;
-}
-
-export interface ViabilityCondition {
-  metric: string;
-  minimum_required: number;
-  current_estimate: number;
-  gap: number;
-  is_met: boolean;
-  explanation: string;
-}
-
-export interface StrategyTwinReport {
-  sotp_segments: SOTPSegment[];
-  sotp_total_ev: number;
-  bl_result: BLResult;
-  viability_conditions: ViabilityCondition[];
-  implied_growth_rate: number | null;
-  causal_effects: Array<{ cause: string; effect: string; total_effect: number; n_paths: number }>;
-  verdict: string;
+export interface ResilienceTwinReport {
+  p_detection: number;
+  p_false_alarm: number;
+  auc: number;
+  per_class_accuracy: Record<string, number>;
+  confusion_matrix: number[][];
+  mean_confidence: number;
+  n_mc: number;
+  n_mc_per_class: Record<string, number>;
   produced_at: string;
 }
 
+// ---- ObservationEpoch (input for twin/run) ----
+
+export interface ObservationEpoch {
+  epoch: number;
+  doppler_residuals: number[];
+  elevations_deg?: number[];
+  ins_velocity_ms?: number[];
+  osnma_auth_per_sat?: boolean[];
+}
+
+export interface TwinRunRequest {
+  observations: ObservationEpoch[];
+  n_sats: number;
+  doppler_noise_std: number;
+  graph_sigma: number;
+  save: boolean;
+}

@@ -45,7 +45,7 @@ interface FieldProps {
 }
 export function Field({ label, children, error }: FieldProps) {
   return (
-    <label style={{ display: "block", marginBottom: spacing.sm }}>
+    <div style={{ marginBottom: spacing.sm }}>
       <div style={{ color: colors.textMuted, fontSize: typography.sm, marginBottom: spacing.xs }}>
         {label}
       </div>
@@ -55,7 +55,7 @@ export function Field({ label, children, error }: FieldProps) {
           {error}
         </div>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -116,12 +116,7 @@ export function Button({ accent, loading, loadingLabel, children, style, ...prop
       disabled={loading || props.disabled}
       {...props}
     >
-      {loading ? (
-        <span style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
-          <Spinner size={13} color="rgba(0,0,0,0.5)" />
-          {loadingLabel ?? "Running…"}
-        </span>
-      ) : children}
+      {loading ? (loadingLabel ?? "Running…") : children}
     </button>
   );
 }
@@ -191,7 +186,7 @@ export function PageHeading({ children, subtitle }: PageHeadingProps) {
     <div style={{ marginBottom: spacing.xl }}>
       <h2
         style={{
-          color: colors.text,
+          color: "#fff",
           fontSize: typography.xl,
           fontWeight: typography.bold,
           margin: 0,
@@ -206,25 +201,6 @@ export function PageHeading({ children, subtitle }: PageHeadingProps) {
         </p>
       )}
     </div>
-  );
-}
-
-// ---- Spinner ----
-
-export function Spinner({ color = colors.accent.green, size = 20 }: { color?: string; size?: number }) {
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        border: `2px solid ${color}33`,
-        borderTopColor: color,
-        borderRadius: "50%",
-        animation: "spin 0.8s linear infinite",
-        display: "inline-block",
-        flexShrink: 0,
-      }}
-    />
   );
 }
 
