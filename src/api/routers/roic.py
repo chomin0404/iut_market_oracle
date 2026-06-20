@@ -44,7 +44,7 @@ _EXAMPLES = {
     ),
 )
 def evaluate_roic(
-    body: Annotated[ROICEvaluateRequest, Body(openapi_examples=_EXAMPLES)],
+    body: Annotated[ROICEvaluateRequest, Body(openapi_examples=_EXAMPLES)],  # type: ignore[arg-type]
 ) -> ROICEvaluateResponse:
     try:
         net = ROICBayesNet(equivalent_sample_size=body.equivalent_sample_size)

@@ -192,7 +192,7 @@ class GPSurrogate:
 
         if best_theta is None:
             best_theta = np.zeros(n_params)
-        theta: np.ndarray = best_theta
+        theta: np.ndarray = best_theta  # type: ignore[assignment]
 
         signal_var = math.exp(theta[0]) ** 2
         length_scales = tuple(float(v) for v in np.exp(theta[1 : d + 1]))
